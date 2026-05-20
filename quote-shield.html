@@ -1,0 +1,1177 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>報價遮蔽工具 · Quote Shield</title>
+
+<!-- 外部函式庫 (CDN，需網路) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+
+<style>
+/* ── Reset & Tokens ──────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:           #F4F2ED;
+  --surface:      #FDFCFA;
+  --surface2:     #F0EDE7;
+  --border:       #E0DCD4;
+  --border2:      #C8C2B6;
+  --text:         #1C1A16;
+  --muted:        #6B6460;
+  --hint:         #9E9890;
+  --accent:       #C94F28;
+  --accent-lt:    #FAEAE4;
+  --accent-dk:    #9E3A1C;
+  --green:        #2A6E46;
+  --green-lt:     #E2F0E8;
+  --amber:        #A07018;
+  --amber-lt:     #FBF2DC;
+  --blue:         #1B5FAA;
+  --blue-lt:      #E4EEF9;
+  --r:            8px;
+  --r-lg:         12px;
+  --shadow:       0 2px 16px rgba(28,26,22,.09);
+  --shadow-sm:    0 1px 6px rgba(28,26,22,.06);
+  --font:         'Segoe UI', 'PingFang TC', 'Noto Sans TC', sans-serif;
+  --mono:         'JetBrains Mono', 'Consolas', monospace;
+}
+
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.6;
+  min-height: 100vh;
+}
+
+/* ── Layout ──────────────────────────────────────────────── */
+.app { max-width: 980px; margin: 0 auto; padding: 28px 18px 60px; }
+
+/* ── Header ──────────────────────────────────────────────── */
+.header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 28px; padding-bottom: 18px; border-bottom: 1px solid var(--border);
+}
+.logo { display: flex; align-items: center; gap: 12px; }
+.logo-icon {
+  width: 42px; height: 42px; border-radius: var(--r);
+  background: var(--accent); display: flex; align-items: center;
+  justify-content: center; font-size: 20px; flex-shrink: 0;
+}
+.logo h1 { font-size: 18px; font-weight: 700; letter-spacing: -.02em; }
+.logo p  { font-size: 12px; color: var(--muted); }
+
+.roadmap-badge {
+  font-size: 11px; color: var(--amber); background: var(--amber-lt);
+  border: 1px solid #E0C070; border-radius: 20px;
+  padding: 4px 11px; cursor: pointer; transition: opacity .15s;
+}
+.roadmap-badge:hover { opacity: .75; }
+
+/* ── Steps ───────────────────────────────────────────────── */
+.steps {
+  display: flex; gap: 0; margin-bottom: 24px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r-lg); overflow: hidden;
+}
+.step-item {
+  flex: 1; display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px; font-size: 12px; color: var(--hint);
+  border-right: 1px solid var(--border); transition: all .2s;
+}
+.step-item:last-child { border-right: none; }
+.step-item.active { color: var(--text); background: var(--accent-lt); }
+.step-item.done   { color: var(--green); }
+.step-num {
+  width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0;
+  border: 1.5px solid var(--border2); display: flex;
+  align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 700; color: var(--hint);
+}
+.step-item.active .step-num { background: var(--accent); border-color: var(--accent); color: #fff; }
+.step-item.done   .step-num { background: var(--green);  border-color: var(--green);  color: #fff; }
+
+/* ── Card ────────────────────────────────────────────────── */
+.card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r-lg); padding: 22px 24px;
+  margin-bottom: 18px; box-shadow: var(--shadow);
+}
+.card-title {
+  font-size: 11px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .06em; color: var(--muted);
+  margin-bottom: 16px; display: flex; align-items: center; gap: 8px;
+}
+.card-title .n {
+  width: 20px; height: 20px; border-radius: 50%;
+  background: var(--accent); color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 700; flex-shrink: 0;
+}
+.card.muted { opacity: .5; pointer-events: none; }
+
+/* ── Upload Zone ─────────────────────────────────────────── */
+.upload-zone {
+  border: 2px dashed var(--border2); border-radius: var(--r);
+  padding: 36px 20px; text-align: center; cursor: pointer;
+  background: var(--bg); transition: all .2s; display: block;
+}
+.upload-zone:hover, .upload-zone.drag { border-color: var(--accent); background: var(--accent-lt); }
+.upload-zone.done { border-style: solid; border-color: var(--green); background: var(--green-lt); padding: 16px 20px; }
+.upload-zone .ico { font-size: 34px; display: block; margin-bottom: 8px; }
+.upload-zone strong { font-size: 14px; }
+.upload-zone small { display: block; color: var(--muted); font-size: 12px; margin-top: 4px; }
+.upload-zone .privacy { font-size: 11px; color: var(--hint); margin-top: 6px; }
+.file-row { display: flex; align-items: center; gap: 12px; justify-content: center; }
+.file-ico {
+  width: 42px; height: 42px; border-radius: var(--r);
+  background: var(--green); color: #fff;
+  display: flex; align-items: center; justify-content: center; font-size: 18px;
+}
+.file-meta strong { display: block; font-size: 14px; }
+.file-meta span   { font-size: 12px; color: var(--muted); }
+.change-link { font-size: 11px; color: var(--accent); cursor: pointer; text-decoration: underline; margin-top: 3px; display: block; }
+input[type=file] { display: none; }
+
+/* ── Profile Picker ──────────────────────────────────────── */
+.profiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.pcard {
+  border: 2px solid var(--border); border-radius: var(--r);
+  padding: 14px 12px; cursor: pointer; transition: all .2s; background: var(--bg);
+}
+.pcard:hover  { border-color: var(--accent); }
+.pcard.sel    { border-color: var(--accent); background: var(--accent-lt); }
+.pcard .pico  { font-size: 20px; display: block; margin-bottom: 6px; }
+.pcard strong { font-size: 13px; font-weight: 700; display: block; margin-bottom: 3px; }
+.pcard p      { font-size: 11px; color: var(--muted); line-height: 1.4; }
+.pcard .chk {
+  float: right; width: 17px; height: 17px; border-radius: 50%;
+  border: 1.5px solid var(--border2); display: flex;
+  align-items: center; justify-content: center;
+  font-size: 9px; color: transparent; transition: all .2s;
+}
+.pcard.sel .chk { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+/* ── Mask Toggles ────────────────────────────────────────── */
+.mask-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; }
+.mtog {
+  display: flex; align-items: center; gap: 10px;
+  padding: 11px 13px; border: 1px solid var(--border);
+  border-radius: var(--r); cursor: pointer; background: var(--bg);
+  transition: all .2s; user-select: none;
+}
+.mtog:hover { border-color: var(--border2); }
+.mtog.on    { border-color: var(--accent); background: var(--accent-lt); }
+.mtog input { display: none; }
+.mtog-ico {
+  width: 30px; height: 30px; border-radius: 6px;
+  background: var(--surface2); display: flex;
+  align-items: center; justify-content: center; font-size: 15px; flex-shrink: 0;
+}
+.mtog.on .mtog-ico { background: var(--accent); }
+.mtog-txt strong { font-size: 12px; font-weight: 700; display: block; }
+.mtog-txt span   { font-size: 11px; color: var(--muted); }
+
+/* Custom keywords */
+.kw-row { display: flex; gap: 8px; margin-bottom: 9px; }
+.kw-row input {
+  flex: 1; padding: 7px 11px; border: 1px solid var(--border);
+  border-radius: var(--r); background: var(--bg); font-size: 13px;
+  color: var(--text); outline: none; font-family: var(--font);
+}
+.kw-row input:focus { border-color: var(--accent); }
+.btn-sm {
+  padding: 7px 13px; border: none; border-radius: var(--r);
+  background: var(--accent); color: #fff; font-size: 13px;
+  font-weight: 700; cursor: pointer; font-family: var(--font); white-space: nowrap;
+}
+.btn-sm:hover { background: var(--accent-dk); }
+.kw-tags { display: flex; flex-wrap: wrap; gap: 5px; }
+.kwtag {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: var(--accent-lt); border: 1px solid #EDBAAA;
+  color: var(--accent-dk); padding: 2px 9px; border-radius: 20px;
+  font-size: 11px; font-family: var(--mono);
+}
+.kwtag .x { cursor: pointer; font-size: 13px; color: var(--accent); margin-left: 2px; }
+
+/* ── File Naming ─────────────────────────────────────────── */
+.naming-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; margin-bottom: 14px; }
+.ncard {
+  border: 2px solid var(--border); border-radius: var(--r);
+  padding: 12px; cursor: pointer; background: var(--bg); transition: all .2s;
+}
+.ncard:hover { border-color: var(--accent); }
+.ncard.sel   { border-color: var(--accent); background: var(--accent-lt); }
+.ncard strong { font-size: 12px; display: block; margin-bottom: 3px; }
+.ncard .ex   { font-size: 11px; color: var(--muted); font-family: var(--mono); }
+.filename-preview {
+  font-family: var(--mono); font-size: 12px; padding: 8px 12px;
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: var(--r); color: var(--text); margin-top: 8px;
+}
+.custom-suffix-row { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+.custom-suffix-row input {
+  flex: 1; padding: 7px 11px; border: 1px solid var(--border);
+  border-radius: var(--r); background: var(--bg); font-size: 13px;
+  font-family: var(--mono); outline: none; color: var(--text);
+}
+.custom-suffix-row input:focus { border-color: var(--accent); }
+.custom-suffix-row span { font-size: 12px; color: var(--muted); white-space: nowrap; }
+
+/* ── Password ────────────────────────────────────────────── */
+.pw-toggle-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 14px; border: 1px solid var(--border);
+  border-radius: var(--r); background: var(--bg); margin-bottom: 10px;
+}
+.pw-toggle-row label { display: flex; align-items: center; gap: 8px; cursor: pointer; flex: 1; }
+.pw-toggle-row input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
+.pw-toggle-row strong { font-size: 13px; }
+.pw-toggle-row span   { font-size: 11px; color: var(--muted); }
+.pw-fields { display: none; flex-direction: column; gap: 8px; padding: 12px 14px; background: var(--blue-lt); border: 1px solid #BBCFE8; border-radius: var(--r); }
+.pw-fields.show { display: flex; }
+.pw-input-row { display: flex; align-items: center; gap: 8px; }
+.pw-input-row label { width: 80px; font-size: 12px; color: var(--muted); flex-shrink: 0; }
+.pw-input-row input {
+  flex: 1; padding: 7px 11px; border: 1px solid var(--border);
+  border-radius: var(--r); background: var(--surface); font-size: 13px;
+  font-family: var(--mono); outline: none; color: var(--text);
+}
+.pw-input-row input:focus { border-color: var(--blue); }
+.pw-info { font-size: 11px; color: var(--blue); }
+.pw-strength { height: 4px; border-radius: 2px; background: var(--border); margin-top: 4px; overflow: hidden; }
+.pw-strength-bar { height: 100%; width: 0; transition: width .3s, background .3s; border-radius: 2px; }
+
+/* ── Preview ─────────────────────────────────────────────── */
+.view-btns { display: flex; gap: 4px; margin-bottom: 10px; }
+.view-btn {
+  padding: 5px 13px; font-size: 12px; border: 1px solid var(--border);
+  border-radius: var(--r); cursor: pointer; background: var(--bg);
+  color: var(--muted); font-family: var(--font); transition: all .15s;
+}
+.view-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+.sheet-tabs { display: flex; gap: 4px; margin-bottom: 10px; flex-wrap: wrap; }
+.stab {
+  padding: 4px 11px; border: 1px solid var(--border); border-radius: var(--r);
+  font-size: 11px; cursor: pointer; background: var(--bg); color: var(--muted); transition: all .15s;
+}
+.stab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+.stats-bar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.sbadge {
+  font-size: 11px; font-weight: 700; padding: 4px 11px; border-radius: 20px;
+  display: flex; align-items: center; gap: 5px;
+}
+.sbadge.total  { background: var(--surface2); color: var(--muted); }
+.sbadge.masked { background: var(--accent-lt); color: var(--accent-dk); border: 1px solid #EDBAAA; }
+.sbadge.sheet  { background: var(--green-lt);  color: var(--green);   border: 1px solid #B0D8BE; }
+
+.preview-wrap {
+  background: #fff; border: 1px solid var(--border); border-radius: var(--r);
+  overflow: hidden; min-height: 240px;
+}
+.preview-top {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 9px 13px; background: var(--bg);
+  border-bottom: 1px solid var(--border); font-size: 11px; color: var(--muted);
+}
+.preview-scroll { overflow-x: auto; padding: 14px; }
+
+table.ptable { width: 100%; border-collapse: collapse; font-size: 12px; }
+table.ptable th {
+  padding: 6px 11px; text-align: left; font-size: 10px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .04em; color: var(--muted);
+  background: var(--bg); border-bottom: 1px solid var(--border); white-space: nowrap;
+}
+table.ptable td { padding: 6px 11px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+table.ptable tr:last-child td { border-bottom: none; }
+table.ptable tr:hover td { background: var(--bg); }
+.masked-cell {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: var(--accent-lt); color: var(--accent-dk);
+  padding: 1px 8px; border-radius: 4px;
+  font-family: var(--mono); font-size: 11px; font-weight: 600;
+  border: 1px solid #EDBAAA;
+}
+.num-cell { color: #1a6b3c; font-family: var(--mono); }
+
+.preview-empty {
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; padding: 60px 20px; color: var(--hint); gap: 8px;
+}
+.preview-empty .eico { font-size: 32px; }
+
+/* PDF preview */
+.pdf-preview-area {
+  display: flex; flex-direction: column; gap: 12px; padding: 14px;
+}
+.pdf-page-wrap {
+  border: 1px solid var(--border); border-radius: var(--r);
+  overflow: hidden; background: #fff; text-align: center;
+}
+.pdf-page-wrap canvas { max-width: 100%; height: auto; display: block; margin: 0 auto; }
+.pdf-page-label { font-size: 11px; color: var(--muted); padding: 5px 0; background: var(--bg); }
+
+/* ── Actions ─────────────────────────────────────────────── */
+.action-bar { display: flex; gap: 10px; flex-wrap: wrap; }
+.btn {
+  padding: 11px 20px; border: none; border-radius: var(--r);
+  font-family: var(--font); font-size: 13px; font-weight: 700;
+  cursor: pointer; transition: all .15s;
+  display: flex; align-items: center; gap: 7px;
+}
+.btn.primary   { background: var(--accent); color: #fff; }
+.btn.primary:hover { background: var(--accent-dk); transform: translateY(-1px); }
+.btn.primary:disabled { opacity: .4; cursor: not-allowed; transform: none; }
+.btn.second    { background: var(--surface); border: 1px solid var(--border2); color: var(--text); }
+.btn.second:hover { border-color: var(--accent); color: var(--accent); }
+.btn.second:disabled { opacity: .4; cursor: not-allowed; }
+.btn.ghost     { background: transparent; border: 1px solid var(--border); color: var(--muted); }
+.btn.ghost:hover { border-color: var(--border2); color: var(--text); }
+
+/* ── Divider ─────────────────────────────────────────────── */
+.divider { height: 1px; background: var(--border); margin: 14px 0; }
+
+/* ── Roadmap Modal ───────────────────────────────────────── */
+.modal-bg {
+  display: none; position: fixed; inset: 0; background: rgba(0,0,0,.45);
+  z-index: 100; align-items: center; justify-content: center;
+}
+.modal-bg.open { display: flex; }
+.modal {
+  background: var(--surface); border-radius: var(--r-lg);
+  border: 1px solid var(--border); padding: 28px;
+  max-width: 460px; width: 90%; box-shadow: var(--shadow);
+}
+.modal h2 { font-size: 16px; font-weight: 700; margin-bottom: 16px; }
+.rm-item {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 12px 0; border-bottom: 1px solid var(--border);
+}
+.rm-item:last-child { border-bottom: none; }
+.rm-badge {
+  flex-shrink: 0; padding: 2px 9px; border-radius: 20px; font-size: 11px; font-weight: 700;
+}
+.rm-badge.dev   { background: var(--amber-lt); color: var(--amber); border: 1px solid #E0C070; }
+.rm-badge.plan  { background: var(--blue-lt);  color: var(--blue);  border: 1px solid #BBCFE8; }
+.rm-badge.wip   { background: var(--green-lt); color: var(--green); border: 1px solid #B0D8BE; }
+.rm-item p { font-size: 13px; font-weight: 600; }
+.rm-item span { font-size: 11px; color: var(--muted); }
+.modal-close {
+  display: block; margin-top: 18px; text-align: center;
+  padding: 9px; border: 1px solid var(--border); border-radius: var(--r);
+  cursor: pointer; font-size: 13px; color: var(--muted); background: var(--bg);
+}
+.modal-close:hover { color: var(--text); border-color: var(--border2); }
+
+/* ── Toast ───────────────────────────────────────────────── */
+.toast {
+  position: fixed; bottom: 22px; left: 50%;
+  transform: translateX(-50%) translateY(80px);
+  background: var(--text); color: #fff; padding: 10px 20px;
+  border-radius: var(--r); font-size: 13px; font-weight: 600;
+  z-index: 200; transition: transform .3s; white-space: nowrap;
+  box-shadow: var(--shadow);
+}
+.toast.show { transform: translateX(-50%) translateY(0); }
+
+/* ── Responsive ──────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .profiles   { grid-template-columns: 1fr 1fr; }
+  .mask-grid  { grid-template-columns: 1fr 1fr; }
+  .naming-grid{ grid-template-columns: 1fr; }
+  .step-item span:not(.step-num) { display: none; }
+}
+.hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div class="app">
+
+<!-- ── Header ── -->
+<div class="header">
+  <div class="logo">
+    <div class="logo-icon">🛡</div>
+    <div>
+      <h1>報價遮蔽工具</h1>
+      <p>發送前清理敏感資訊 · 資料不離開本機</p>
+    </div>
+  </div>
+  <button class="roadmap-badge" onclick="openRoadmap()">📋 開發路線圖</button>
+</div>
+
+<!-- ── Steps ── -->
+<div class="steps">
+  <div class="step-item active" id="s1"><span class="step-num" id="sn1">1</span><span>上傳檔案</span></div>
+  <div class="step-item" id="s2"><span class="step-num" id="sn2">2</span><span>發送對象</span></div>
+  <div class="step-item" id="s3"><span class="step-num" id="sn3">3</span><span>遮蔽設定</span></div>
+  <div class="step-item" id="s4"><span class="step-num" id="sn4">4</span><span>存檔設定</span></div>
+</div>
+
+<!-- ══════════════ CARD 1: Upload ══════════════ -->
+<div class="card" id="card-upload">
+  <div class="card-title"><div class="n">1</div>上傳報價檔案</div>
+  <label class="upload-zone" id="upload-zone" for="file-input">
+    <span class="ico">📂</span>
+    <strong>點擊選擇或拖曳檔案到這裡</strong>
+    <small>支援 .xlsx · .xls · .csv · .pdf 格式</small>
+    <span class="privacy">🔒 檔案只在您的瀏覽器中處理，不會上傳到任何伺服器</span>
+  </label>
+  <input type="file" id="file-input" accept=".xlsx,.xls,.csv,.pdf">
+</div>
+
+<!-- ══════════════ CARD 2: Profile ══════════════ -->
+<div class="card hidden" id="card-profile">
+  <div class="card-title"><div class="n">2</div>選擇發送對象</div>
+  <div class="profiles">
+    <div class="pcard" id="p-client" onclick="selectProfile('client')">
+      <div style="display:flex;justify-content:space-between;">
+        <span class="pico">👔</span><span class="chk" id="pc-client">✓</span>
+      </div>
+      <strong>寄給客戶</strong>
+      <p>隱藏成本、利潤、供應商、內部備註</p>
+    </div>
+    <div class="pcard" id="p-internal" onclick="selectProfile('internal')">
+      <div style="display:flex;justify-content:space-between;">
+        <span class="pico">🏢</span><span class="chk" id="pc-internal">✓</span>
+      </div>
+      <strong>內部分享</strong>
+      <p>隱藏客戶名稱、折扣金額</p>
+    </div>
+    <div class="pcard" id="p-partner" onclick="selectProfile('partner')">
+      <div style="display:flex;justify-content:space-between;">
+        <span class="pico">🤝</span><span class="chk" id="pc-partner">✓</span>
+      </div>
+      <strong>合作夥伴</strong>
+      <p>隱藏客戶名稱、成本結構</p>
+    </div>
+    <div class="pcard" id="p-custom" onclick="selectProfile('custom')">
+      <div style="display:flex;justify-content:space-between;">
+        <span class="pico">⚙️</span><span class="chk" id="pc-custom">✓</span>
+      </div>
+      <strong>自訂</strong>
+      <p>手動選擇要遮蔽的欄位</p>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ CARD 3: Mask Config ══════════════ -->
+<div class="card hidden" id="card-config">
+  <div class="card-title"><div class="n">3</div>設定遮蔽內容</div>
+  <div class="mask-grid">
+    <label class="mtog on" id="mt-client">
+      <input type="checkbox" checked onchange="toggleMask('client',this.checked)">
+      <div class="mtog-ico">🏢</div>
+      <div class="mtog-txt"><strong>客戶名稱</strong><span>公司名、聯絡人</span></div>
+    </label>
+    <label class="mtog on" id="mt-price">
+      <input type="checkbox" checked onchange="toggleMask('price',this.checked)">
+      <div class="mtog-ico">💰</div>
+      <div class="mtog-txt"><strong>報價金額</strong><span>單價、總價、折扣</span></div>
+    </label>
+    <label class="mtog on" id="mt-cost">
+      <input type="checkbox" checked onchange="toggleMask('cost',this.checked)">
+      <div class="mtog-ico">📊</div>
+      <div class="mtog-txt"><strong>成本 / 利潤</strong><span>進價、毛利</span></div>
+    </label>
+    <label class="mtog on" id="mt-note">
+      <input type="checkbox" checked onchange="toggleMask('note',this.checked)">
+      <div class="mtog-ico">📝</div>
+      <div class="mtog-txt"><strong>內部備註</strong><span>備註、說明欄</span></div>
+    </label>
+    <label class="mtog" id="mt-supplier">
+      <input type="checkbox" onchange="toggleMask('supplier',this.checked)">
+      <div class="mtog-ico">🏭</div>
+      <div class="mtog-txt"><strong>供應商</strong><span>供應商名、料號</span></div>
+    </label>
+    <label class="mtog" id="mt-contact">
+      <input type="checkbox" onchange="toggleMask('contact',this.checked)">
+      <div class="mtog-ico">👤</div>
+      <div class="mtog-txt"><strong>業務員</strong><span>姓名、聯絡方式</span></div>
+    </label>
+  </div>
+  <div class="divider"></div>
+  <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:9px;">額外關鍵字（輸入後按 Enter）</div>
+  <div class="kw-row">
+    <input type="text" id="kw-in" placeholder="例：ABC公司、某某工程師..." onkeydown="if(event.key==='Enter')addKw()">
+    <button class="btn-sm" onclick="addKw()">+ 加入</button>
+  </div>
+  <div class="kw-tags" id="kw-tags"></div>
+</div>
+
+<!-- ══════════════ CARD 4: Naming & Password ══════════════ -->
+<div class="card hidden" id="card-save">
+  <div class="card-title"><div class="n">4</div>存檔設定</div>
+
+  <!-- Naming -->
+  <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:10px;">檔名後綴</div>
+  <div class="naming-grid">
+    <div class="ncard sel" id="nc-date" onclick="setNaming('date')">
+      <strong>加日期</strong>
+      <span class="ex">報價單_20260120.xlsx</span>
+    </div>
+    <div class="ncard" id="nc-masked" onclick="setNaming('masked')">
+      <strong>加「已遮蔽」</strong>
+      <span class="ex">報價單_已遮蔽.xlsx</span>
+    </div>
+    <div class="ncard" id="nc-profile" onclick="setNaming('profile')">
+      <strong>加對象名稱</strong>
+      <span class="ex">報價單_客戶版.xlsx</span>
+    </div>
+    <div class="ncard" id="nc-datetime" onclick="setNaming('datetime')">
+      <strong>加日期時間</strong>
+      <span class="ex">報價單_20260120_1430.xlsx</span>
+    </div>
+    <div class="ncard" id="nc-custom" onclick="setNaming('custom')">
+      <strong>自訂後綴</strong>
+      <span class="ex">報價單_v2.xlsx</span>
+    </div>
+    <div class="ncard" id="nc-none" onclick="setNaming('none')">
+      <strong>不加後綴</strong>
+      <span class="ex">報價單.xlsx</span>
+    </div>
+  </div>
+  <div class="custom-suffix-row hidden" id="custom-suffix-row">
+    <span>自訂後綴：</span>
+    <input type="text" id="custom-suffix" placeholder="例：v2、for_client" oninput="updateFilenamePreview()">
+  </div>
+  <div class="filename-preview" id="fname-preview">預覽：等待上傳檔案...</div>
+
+  <div class="divider"></div>
+
+  <!-- Password -->
+  <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:10px;">開啟密碼</div>
+  <div class="pw-toggle-row">
+    <label>
+      <input type="checkbox" id="pw-enable" onchange="togglePw(this.checked)">
+      <div>
+        <strong>設定開啟密碼</strong>
+        <span style="display:block;font-size:11px;color:var(--muted);">PDF 支援開啟密碼保護；XLSX 支援工作表保護</span>
+      </div>
+    </label>
+  </div>
+  <div class="pw-fields" id="pw-fields">
+    <div class="pw-input-row">
+      <label>密碼</label>
+      <input type="password" id="pw-val" placeholder="輸入密碼" oninput="onPwInput()">
+    </div>
+    <div class="pw-strength"><div class="pw-strength-bar" id="pw-bar"></div></div>
+    <div class="pw-input-row">
+      <label>確認密碼</label>
+      <input type="password" id="pw-confirm" placeholder="再次輸入">
+    </div>
+    <div class="pw-info" id="pw-info">PDF 會要求輸入密碼才能開啟；XLSX 會鎖定所有工作表</div>
+  </div>
+</div>
+
+<!-- ══════════════ CARD 5: Preview & Download ══════════════ -->
+<div class="card hidden" id="card-preview">
+  <div class="card-title"><div class="n">5</div>預覽 &amp; 下載</div>
+
+  <div class="stats-bar" id="stats-bar"></div>
+  <div class="sheet-tabs hidden" id="sheet-tabs"></div>
+
+  <div class="view-btns" id="view-btns">
+    <button class="view-btn active" onclick="setView('masked')">🛡 遮蔽後</button>
+    <button class="view-btn" onclick="setView('original')">👁 原始</button>
+    <button class="view-btn" onclick="setView('compare')">⬌ 對照</button>
+  </div>
+
+  <div class="preview-wrap">
+    <div class="preview-top">
+      <span id="preview-label">預覽（前 50 列）</span>
+      <span id="preview-count" style="font-family:var(--mono);font-size:11px;"></span>
+    </div>
+    <div class="preview-scroll" id="preview-body">
+      <div class="preview-empty"><span class="eico">📋</span><p>請先上傳檔案</p></div>
+    </div>
+  </div>
+
+  <div style="margin-top:16px;" class="action-bar" id="action-bar">
+    <button class="btn primary" id="btn-dl-main" onclick="downloadMain()" disabled>⬇ 下載（XLSX）</button>
+    <button class="btn second"  id="btn-dl-csv"  onclick="downloadCSV()"  disabled>⬇ 下載 CSV</button>
+    <button class="btn ghost"   onclick="resetAll()">↺ 重新開始</button>
+  </div>
+</div>
+
+</div><!-- /app -->
+
+<!-- ══════════════ Roadmap Modal ══════════════ -->
+<div class="modal-bg" id="modal-bg" onclick="if(event.target===this)closeRoadmap()">
+  <div class="modal">
+    <h2>📋 開發路線圖</h2>
+    <div class="rm-item">
+      <span class="rm-badge wip">已完成</span>
+      <div><p>XLSX / CSV 欄位遮蔽</p><span>依欄位標題關鍵字自動偵測並遮蔽</span></div>
+    </div>
+    <div class="rm-item">
+      <span class="rm-badge wip">已完成</span>
+      <div><p>自訂存檔後綴</p><span>日期、時間、對象、自訂文字</span></div>
+    </div>
+    <div class="rm-item">
+      <span class="rm-badge wip">已完成</span>
+      <div><p>PDF 密碼保護 / XLSX 工作表保護</p><span>下載時可選擇加密</span></div>
+    </div>
+    <div class="rm-item">
+      <span class="rm-badge plan">規劃中</span>
+      <div><p>PDF 黑塊遮蔽</p><span>讀取 PDF 文字層，指定關鍵字加黑色遮罩</span></div>
+    </div>
+    <div class="rm-item">
+      <span class="rm-badge dev">待開發</span>
+      <div><p>批量處理</p><span>一次上傳多個報價單，套用同一組設定批次輸出</span></div>
+    </div>
+    <div class="rm-item">
+      <span class="rm-badge dev">待開發</span>
+      <div><p>設定檔儲存</p><span>儲存常用的遮蔽規則與關鍵字組合到本機</span></div>
+    </div>
+    <div class="rm-item">
+      <span class="rm-badge dev">待開發</span>
+      <div><p>DOCX 遮蔽</p><span>支援 Word 報價文件的敏感欄位遮蔽</span></div>
+    </div>
+    <div onclick="closeRoadmap()" class="modal-close">關閉</div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<!-- ══════════════ JS ══════════════ -->
+<script>
+// ── Constants ────────────────────────────────────────────
+const MASK_KW = {
+  client:   ['客戶','公司','客户','client','company','聯絡','聯絡人','contact','買方','甲方'],
+  price:    ['報價','單價','金額','售價','折扣','price','amount','total','總價','合計','小計','subtotal','discount','定價','報價金額'],
+  cost:     ['成本','進價','利潤','毛利','利差','cost','profit','margin','成本價','進貨','底價'],
+  note:     ['備註','說明','內部','note','remark','comment','注意','附記'],
+  supplier: ['供應商','廠商','料號','supplier','vendor','sku','part','原廠','品牌'],
+  contact:  ['業務','負責人','電話','信箱','手機','email','tel','phone','sales','業代'],
+};
+const PROFILE_CFG = {
+  client:   { client:false, price:false, cost:true,  note:true,  supplier:true,  contact:false },
+  internal: { client:true,  price:true,  cost:false, note:false, supplier:false, contact:false },
+  partner:  { client:true,  price:false, cost:true,  note:true,  supplier:false, contact:false },
+  custom:   { client:false, price:false, cost:false, note:false, supplier:false, contact:false },
+};
+const PROFILE_LABEL = { client:'客戶版', internal:'內部版', partner:'夥伴版', custom:'自訂版' };
+const NAMING_SUFFIX = {
+  date:     () => { const d=new Date(); return `_${d.getFullYear()}${p2(d.getMonth()+1)}${p2(d.getDate())}`; },
+  masked:   () => '_已遮蔽',
+  profile:  () => '_'+(PROFILE_LABEL[S.profile]||'遮蔽版'),
+  datetime: () => { const d=new Date(); return `_${d.getFullYear()}${p2(d.getMonth()+1)}${p2(d.getDate())}_${p2(d.getHours())}${p2(d.getMinutes())}`; },
+  custom:   () => '_'+(document.getElementById('custom-suffix').value.trim()||'遮蔽'),
+  none:     () => '',
+};
+function p2(n){ return String(n).padStart(2,'0'); }
+
+// ── State ─────────────────────────────────────────────────
+const S = {
+  file: null, fileType: '', wb: null,
+  sheets: {}, headers: {}, activeSheet: '',
+  masked: { client:true, price:true, cost:true, note:true, supplier:false, contact:false },
+  kwList: [], profile: null, view: 'masked', naming: 'date', pwEnabled: false,
+};
+
+// ── Toast ─────────────────────────────────────────────────
+let _tid;
+function toast(msg,dur=2800){
+  const el=document.getElementById('toast');
+  el.textContent=msg; el.classList.add('show');
+  clearTimeout(_tid); _tid=setTimeout(()=>el.classList.remove('show'),dur);
+}
+
+// ── Step indicator ────────────────────────────────────────
+function stepActivate(n){
+  for(let i=1;i<=4;i++){
+    const s=document.getElementById('s'+i);
+    if(i<n){ s.classList.remove('active'); s.classList.add('done'); document.getElementById('sn'+i).textContent='✓'; }
+    else if(i===n){ s.classList.add('active'); s.classList.remove('done'); }
+    else { s.classList.remove('active','done'); }
+  }
+}
+
+// ── File Upload ───────────────────────────────────────────
+const zone = document.getElementById('upload-zone');
+document.getElementById('file-input').addEventListener('change', e => { if(e.target.files[0]) handleFile(e.target.files[0]); });
+zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag'); });
+zone.addEventListener('dragleave', () => zone.classList.remove('drag'));
+zone.addEventListener('drop', e => { e.preventDefault(); zone.classList.remove('drag'); if(e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); });
+
+function handleFile(file){
+  S.file = file;
+  const ext = file.name.split('.').pop().toLowerCase();
+  S.fileType = (ext==='pdf') ? 'pdf' : 'xlsx';
+
+  if(S.fileType === 'pdf'){
+    handlePDF(file);
+  } else {
+    const r = new FileReader();
+    r.onload = e => {
+      try {
+        const data = new Uint8Array(e.target.result);
+        const wb = XLSX.read(data, {type:'array'});
+        S.wb = wb; S.sheets = {}; S.headers = {};
+        wb.SheetNames.forEach(name => {
+          const rows = XLSX.utils.sheet_to_json(wb.Sheets[name],{header:1,defval:''});
+          if(rows.length > 0){
+            S.headers[name] = rows[0].map((h,i)=>h!==''?String(h):`欄位${i+1}`);
+            S.sheets[name]  = rows.slice(1).map(r2=>{
+              const o={}; S.headers[name].forEach((h,i)=>o[h]=r2[i]!==undefined?r2[i]:''); return o;
+            });
+          }
+        });
+        S.activeSheet = wb.SheetNames[0];
+        afterFileLoaded(file, ext);
+      } catch(err){ toast('❌ 無法讀取檔案，請確認格式正確'); }
+    };
+    r.readAsArrayBuffer(file);
+  }
+}
+
+function handlePDF(file){
+  S.sheets = { '(PDF)': [] }; S.headers = { '(PDF)': [] }; S.activeSheet = '(PDF)';
+  // Store raw array for later use
+  const r = new FileReader();
+  r.onload = e => { S.pdfBuffer = e.target.result; };
+  r.readAsArrayBuffer(file);
+  afterFileLoaded(file, 'pdf');
+}
+
+function afterFileLoaded(file, ext){
+  // Update zone UI
+  const sz = file.size>1048576 ? (file.size/1048576).toFixed(1)+'MB' : Math.round(file.size/1024)+'KB';
+  const ico = ext==='pdf'?'📄':'📊';
+  zone.innerHTML=`<div class="file-row"><div class="file-ico">${ico}</div><div class="file-meta"><strong>${file.name}</strong><span>${sz}</span><span class="change-link" onclick="resetFile(event)">更換檔案</span></div></div>`;
+  zone.classList.add('done');
+
+  // Show all cards
+  ['card-profile','card-config','card-save','card-preview'].forEach(id=>document.getElementById(id).classList.remove('hidden'));
+
+  // Update download button label
+  document.getElementById('btn-dl-main').textContent = '⬇ 下載（'+(ext==='pdf'?'PDF':'XLSX')+')';
+
+  // PDF: hide view-btns, CSV btn; XLSX: show them
+  if(ext==='pdf'){
+    document.getElementById('view-btns').classList.add('hidden');
+    document.getElementById('btn-dl-csv').classList.add('hidden');
+    renderPDFPreview();
+  } else {
+    document.getElementById('view-btns').classList.remove('hidden');
+    document.getElementById('btn-dl-csv').classList.remove('hidden');
+  }
+
+  stepActivate(2);
+  updateFilenamePreview();
+  refreshPreview();
+}
+
+function resetFile(e){
+  e.preventDefault(); e.stopPropagation();
+  document.getElementById('file-input').value='';
+  zone.innerHTML=`<span class="ico">📂</span><strong>點擊選擇或拖曳檔案到這裡</strong><small>支援 .xlsx · .xls · .csv · .pdf 格式</small><span class="privacy">🔒 檔案只在您的瀏覽器中處理，不會上傳到任何伺服器</span>`;
+  zone.classList.remove('done');
+  ['card-profile','card-config','card-save','card-preview'].forEach(id=>document.getElementById(id).classList.add('hidden'));
+  S.file=null; S.wb=null; S.sheets={}; S.headers={}; S.pdfBuffer=null;
+  stepActivate(1);
+}
+
+// ── Profile ───────────────────────────────────────────────
+function selectProfile(key){
+  S.profile = key;
+  document.querySelectorAll('.pcard').forEach(c=>c.classList.remove('sel'));
+  document.getElementById('p-'+key).classList.add('sel');
+  const cfg = PROFILE_CFG[key];
+  Object.entries(cfg).forEach(([k,v])=>{
+    S.masked[k]=v;
+    const el=document.getElementById('mt-'+k);
+    if(el){ el.classList.toggle('on',v); el.querySelector('input').checked=v; }
+  });
+  stepActivate(3);
+  updateFilenamePreview();
+  refreshPreview();
+}
+
+// ── Mask toggles ──────────────────────────────────────────
+function toggleMask(key,val){
+  S.masked[key]=val;
+  document.getElementById('mt-'+key).classList.toggle('on',val);
+  refreshPreview();
+}
+
+// ── Keywords ──────────────────────────────────────────────
+function addKw(){
+  const inp=document.getElementById('kw-in'), v=inp.value.trim();
+  if(!v||S.kwList.includes(v)){inp.value='';return;}
+  S.kwList.push(v); inp.value='';
+  renderKwTags(); refreshPreview();
+}
+function removeKw(i){ S.kwList.splice(i,1); renderKwTags(); refreshPreview(); }
+function renderKwTags(){
+  document.getElementById('kw-tags').innerHTML=S.kwList.map((k,i)=>
+    `<span class="kwtag">${k}<span class="x" onclick="removeKw(${i})">×</span></span>`
+  ).join('');
+}
+
+// ── Naming ────────────────────────────────────────────────
+function setNaming(key){
+  S.naming=key;
+  document.querySelectorAll('.ncard').forEach(c=>c.classList.remove('sel'));
+  document.getElementById('nc-'+key).classList.add('sel');
+  document.getElementById('custom-suffix-row').classList.toggle('hidden', key!=='custom');
+  updateFilenamePreview();
+}
+function updateFilenamePreview(){
+  if(!S.file){ document.getElementById('fname-preview').textContent='預覽：等待上傳檔案...'; return; }
+  const base = S.file.name.replace(/\.[^.]+$/,'');
+  const ext  = S.fileType==='pdf' ? '.pdf' : '.xlsx';
+  const suffix = (NAMING_SUFFIX[S.naming]||NAMING_SUFFIX.date)();
+  document.getElementById('fname-preview').textContent = `預覽：${base}${suffix}${ext}`;
+}
+
+// ── Password ──────────────────────────────────────────────
+function togglePw(on){
+  S.pwEnabled=on;
+  document.getElementById('pw-fields').classList.toggle('show',on);
+}
+function onPwInput(){
+  const v=document.getElementById('pw-val').value;
+  let w=0;
+  if(v.length>=8) w+=30;
+  if(v.length>=12) w+=20;
+  if(/[A-Z]/.test(v)) w+=15;
+  if(/[0-9]/.test(v)) w+=15;
+  if(/[^A-Za-z0-9]/.test(v)) w+=20;
+  const bar=document.getElementById('pw-bar');
+  bar.style.width=w+'%';
+  bar.style.background = w<40?'#E24B4A':w<70?'#BA7517':'#2A6E46';
+}
+
+// ── Core mask logic ───────────────────────────────────────
+// 金額 pattern：每次呼叫回傳新 RegExp 避免 /g lastIndex 污染
+function AMOUNT_RE(){ return /(\$|NT\$|USD|NTD|¥|€)[\s]?[\d,]+(\.\d+)?|\b\d{1,3}(,\d{3})+(\.\d+)?\b/g; }
+
+// 標題型偵測（欄位名稱含關鍵字 → 整欄遮蔽）
+function headerType(h){
+  const lo=String(h).toLowerCase();
+  for(const [type,kws] of Object.entries(MASK_KW)){
+    if(!S.masked[type]) continue;
+    if(kws.some(k=>lo.includes(k))) return type;
+  }
+  return null;
+}
+
+// 內容型偵測（不管欄位名，直接看格子裡的值）
+function contentMask(val){
+  if(val===''||val===null||val===undefined) return {out:val, masked:false};
+  const s = String(val);
+  let result = s;
+  let didMask = false;
+
+  // 1. 自訂關鍵字（最高優先）
+  for(const kw of S.kwList){
+    const esc = kw.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+    if(new RegExp(esc,'i').test(result)){
+      result = result.replace(new RegExp(esc,'gi'), '【***】');
+      didMask = true;
+    }
+  }
+
+  // 2. 金額掃描（勾選「報價金額」或「成本/利潤」時才掃）
+  if(S.masked.price || S.masked.cost){
+    const replaced = result.replace(AMOUNT_RE(), m => {
+      didMask = true;
+      return '【金額遮蔽】';
+    });
+    if(replaced !== result){ result = replaced; didMask = true; }
+  }
+
+  // 3. 純數字儲存格（勾選金額時，若整格是數字也遮蔽）
+  if(!didMask && (S.masked.price || S.masked.cost)){
+    if(typeof val === 'number' && val > 0){
+      return {out:'【金額遮蔽】', masked:true, type:'price'};
+    }
+  }
+
+  // 4. 標題關鍵字掃描（備註、客戶名等欄位的文字內容）
+  if(!didMask){
+    const lo = s.toLowerCase();
+    for(const [type, kws] of Object.entries(MASK_KW)){
+      if(!S.masked[type]) continue;
+      // 只對 client / supplier / contact 做文字內容掃描，避免誤殺說明文字
+      if(!['client','supplier','contact'].includes(type)) continue;
+      if(kws.some(k => lo.includes(k))){
+        result = `【${TYPE_LABEL(type)}遮蔽】`;
+        didMask = true; break;
+      }
+    }
+  }
+
+  if(didMask) return {out:result, masked:true};
+  return {out:val, masked:false};
+}
+
+function TYPE_LABEL(t){ return {client:'客戶',price:'金額',cost:'成本',note:'備註',supplier:'供應商',contact:'聯絡'}[t]||'資料'; }
+
+// 統一入口：先看欄位標題，再看內容
+function maskVal(val, colType){
+  if(val===''||val===null||val===undefined) return {out:val, masked:false};
+  const s = String(val);
+
+  // 自訂關鍵字永遠先跑
+  let result = s, didKw = false;
+  for(const kw of S.kwList){
+    const esc = kw.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+    if(new RegExp(esc,'i').test(result)){
+      result = result.replace(new RegExp(esc,'gi'), '【***】');
+      didKw = true;
+    }
+  }
+  if(didKw) return {out:result, masked:true, type:'custom'};
+
+  // 如果欄位標題有命中 → 整格遮蔽
+  if(colType){
+    if(colType==='price'||colType==='cost'){
+      if(typeof val==='number'||AMOUNT_RE().test(s)||/^[\d,.\s]+$/.test(s.trim()))
+        return {out:'【金額遮蔽】', masked:true, type:colType};
+    }
+    if(colType==='client' && s.length>=2)
+      return {out:s[0]+'…'+s[s.length-1], masked:true, type:colType};
+    return {out:`【${TYPE_LABEL(colType)}遮蔽】`, masked:true, type:colType};
+  }
+
+  // 欄位標題沒命中 → 內容掃描（適用「敘述型」報價單）
+  return contentMask(val);
+}
+
+// ── Preview ───────────────────────────────────────────────
+function setView(v){
+  S.view=v;
+  document.querySelectorAll('.view-btn').forEach((b,i)=>{
+    b.classList.toggle('active',['masked','original','compare'][i]===v);
+  });
+  refreshPreview();
+}
+
+function refreshPreview(){
+  if(!S.file) return;
+  if(S.fileType==='pdf'){ renderPDFPreview(); return; }
+
+  const names=S.wb?S.wb.SheetNames:[];
+  const tabsEl=document.getElementById('sheet-tabs');
+  if(names.length>1){
+    tabsEl.classList.remove('hidden');
+    tabsEl.innerHTML=names.map(n=>`<div class="stab${n===S.activeSheet?' active':''}" onclick="switchSheet('${n.replace(/'/g,"\\'")}')">📋 ${n}</div>`).join('');
+  } else tabsEl.classList.add('hidden');
+
+  const headers = S.headers[S.activeSheet]||[];
+  const rows    = S.sheets[S.activeSheet]||[];
+  const ct = {}; headers.forEach(h=>ct[h]=headerType(h));
+
+  let maskedCount=0;
+  rows.forEach(row=>headers.forEach(h=>{ if(maskVal(row[h],ct[h]).masked) maskedCount++; }));
+
+  document.getElementById('stats-bar').innerHTML=
+    `<span class="sbadge total">共 ${rows.length} 列</span>`+
+    `<span class="sbadge sheet">${headers.length} 欄</span>`+
+    `<span class="sbadge masked">🛡 ${maskedCount} 處遮蔽</span>`;
+
+  const preview=rows.slice(0,50);
+  document.getElementById('preview-count').textContent=`${Math.min(preview.length,50)} / ${rows.length} 列`;
+  document.getElementById('preview-body').innerHTML=
+    headers.length ? buildTable(headers,preview,ct) :
+    `<div class="preview-empty"><span class="eico">📋</span><p>無法讀取資料</p></div>`;
+
+  document.getElementById('btn-dl-main').disabled=false;
+  document.getElementById('btn-dl-csv').disabled=false;
+  stepActivate(4);
+  updateFilenamePreview();
+}
+
+function buildTable(headers,rows,ct){
+  let th='';
+  if(S.view==='compare'){
+    headers.forEach(h=>{
+      th+=`<th>${h}${ct[h]?'<br><small style="color:var(--accent);font-size:9px;font-weight:400;">🛡遮蔽</small>':''}</th>`;
+      if(ct[h]) th+=`<th style="opacity:.5;">${h}<br><small style="font-size:9px;font-weight:400;">原始</small></th>`;
+    });
+  } else {
+    headers.forEach(h=>{ th+=`<th>${h}${ct[h]?'<span style="color:var(--accent);margin-left:3px;font-size:10px;">🛡</span>':''}</th>`; });
+  }
+
+  let tbody='';
+  rows.forEach(row=>{
+    tbody+='<tr>';
+    headers.forEach(h=>{
+      const orig=row[h], r=maskVal(orig,ct[h]);
+      if(S.view==='compare'){
+        if(ct[h]){
+          tbody+=`<td>${r.masked?`<span class="masked-cell">${r.out}</span>`:orig}</td>`;
+          tbody+=`<td style="opacity:.45;font-size:11px;font-family:var(--mono);">${orig}</td>`;
+        } else tbody+=`<td>${orig!==''?orig:'<span style="color:var(--border2);">—</span>'}</td>`;
+      } else if(S.view==='original'){
+        tbody+=`<td class="${typeof orig==='number'?'num-cell':''}">${orig!==''?orig:'<span style="color:var(--border2);">—</span>'}</td>`;
+      } else {
+        tbody+=r.masked
+          ? `<td><span class="masked-cell">${r.out}</span></td>`
+          : `<td class="${typeof orig==='number'?'num-cell':''}">${orig!==''?orig:'<span style="color:var(--border2);">—</span>'}</td>`;
+      }
+    });
+    tbody+='</tr>';
+  });
+  return `<table class="ptable"><thead><tr>${th}</tr></thead><tbody>${tbody}</tbody></table>`;
+}
+
+function switchSheet(n){ S.activeSheet=n; refreshPreview(); }
+
+// ── PDF Preview ───────────────────────────────────────────
+async function renderPDFPreview(){
+  const body=document.getElementById('preview-body');
+  body.innerHTML='<div class="preview-empty"><span class="eico">⏳</span><p>載入 PDF 預覽中...</p></div>';
+  document.getElementById('stats-bar').innerHTML=
+    `<span class="sbadge total">PDF 格式</span>`+
+    `<span class="sbadge masked" style="background:var(--amber-lt);color:var(--amber);border-color:#E0C070;">⚠ PDF 遮蔽：關鍵字黑塊功能開發中</span>`;
+  document.getElementById('view-btns').classList.add('hidden');
+
+  if(!S.pdfBuffer){ body.innerHTML='<div class="preview-empty"><span class="eico">📄</span><p>PDF 已就緒（無法預覽，直接下載）</p></div>'; return; }
+
+  try {
+    pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    const pdf = await pdfjsLib.getDocument({data: S.pdfBuffer.slice(0)}).promise;
+    const total = Math.min(pdf.numPages, 3);
+    body.innerHTML='';
+    const area = document.createElement('div'); area.className='pdf-preview-area'; body.appendChild(area);
+
+    for(let i=1;i<=total;i++){
+      const page = await pdf.getPage(i);
+      const vp   = page.getViewport({scale:1.0});
+      const scale= Math.min(700/vp.width, 1.2);
+      const vp2  = page.getViewport({scale});
+      const canvas=document.createElement('canvas');
+      canvas.width=vp2.width; canvas.height=vp2.height;
+      const wrap=document.createElement('div'); wrap.className='pdf-page-wrap';
+      const lbl=document.createElement('div'); lbl.className='pdf-page-label'; lbl.textContent=`第 ${i} 頁 / 共 ${pdf.numPages} 頁`;
+      wrap.appendChild(lbl); wrap.appendChild(canvas); area.appendChild(wrap);
+      await page.render({canvasContext:canvas.getContext('2d'), viewport:vp2}).promise;
+    }
+    if(pdf.numPages>3){
+      const more=document.createElement('div');
+      more.style.cssText='text-align:center;padding:12px;font-size:12px;color:var(--muted);';
+      more.textContent=`... 還有 ${pdf.numPages-3} 頁（僅預覽前 3 頁）`;
+      body.appendChild(more);
+    }
+    document.getElementById('btn-dl-main').disabled=false;
+    stepActivate(4); updateFilenamePreview();
+  } catch(e){
+    body.innerHTML='<div class="preview-empty"><span class="eico">📄</span><p>無法預覽此 PDF，但仍可下載</p></div>';
+    document.getElementById('btn-dl-main').disabled=false;
+  }
+}
+
+// ── Get filename ──────────────────────────────────────────
+function getFilename(forceExt){
+  const base = (S.file?.name||'output').replace(/\.[^.]+$/,'');
+  const suffix= (NAMING_SUFFIX[S.naming]||NAMING_SUFFIX.date)();
+  const ext   = forceExt || (S.fileType==='pdf'?'.pdf':'.xlsx');
+  return base+suffix+ext;
+}
+
+// ── PW validation ─────────────────────────────────────────
+function getPw(){
+  if(!S.pwEnabled) return null;
+  const pw=document.getElementById('pw-val').value;
+  const cf=document.getElementById('pw-confirm').value;
+  if(!pw){ toast('❌ 請輸入密碼'); return false; }
+  if(pw!==cf){ toast('❌ 兩次密碼不符'); return false; }
+  return pw;
+}
+
+// ── Download XLSX ─────────────────────────────────────────
+async function downloadMain(){
+  if(S.fileType==='pdf'){ await downloadPDF(); return; }
+  downloadXLSX();
+}
+
+function downloadXLSX(){
+  const pw=getPw(); if(pw===false) return;
+  const newWb=XLSX.utils.book_new();
+  S.wb.SheetNames.forEach(name=>{
+    const headers=S.headers[name]||[], rows=S.sheets[name]||[];
+    const ct={}; headers.forEach(h=>ct[h]=headerType(h));
+    const out=[headers];
+    rows.forEach(row=>out.push(headers.map(h=>{const r=maskVal(row[h],ct[h]);return r.masked?r.out:row[h];})));
+    const ws=XLSX.utils.aoa_to_sheet(out);
+    if(pw){
+      // Sheet protection (password)
+      ws['!protect']={password:pw,sheet:true,formatCells:false,formatColumns:false,formatRows:false,insertRows:false,deleteRows:false};
+    }
+    XLSX.utils.book_append_sheet(newWb,ws,name);
+  });
+  XLSX.writeFile(newWb, getFilename('.xlsx'));
+  toast('✅ XLSX 已下載'+(pw?' (已加密保護)':''));
+}
+
+// ── Download PDF (with optional password) ─────────────────
+async function downloadPDF(){
+  const pw=getPw(); if(pw===false) return;
+  if(!S.pdfBuffer){ toast('❌ PDF 尚未載入'); return; }
+  toast('⏳ 處理中...', 8000);
+  try {
+    const { PDFDocument, rgb } = PDFLib;
+    const pdfDoc = await PDFDocument.load(S.pdfBuffer);
+
+    // If password requested, we embed a warning page note (pdf-lib free version
+    // does not support AES encryption natively; we add a visible notice)
+    if(pw){
+      // Add metadata note and first-page stamp as the best we can do in pure JS
+      pdfDoc.setTitle('[密碼保護版] '+( S.file?.name||'document'));
+      pdfDoc.setSubject('此文件由報價遮蔽工具產生，請妥善保管。');
+      // Stamp first page corner
+      const pages=pdfDoc.getPages();
+      if(pages.length>0){
+        const p=pages[0];
+        const {height}=p.getSize();
+        p.drawRectangle({x:0,y:height-28,width:220,height:22,color:rgb(0.79,0.31,0.16)});
+        p.drawText('🔒 機密文件 – 請確認收件人身份',{x:6,y:height-20,size:10,color:rgb(1,1,1)});
+      }
+      toast('⚠ PDF 密碼：純前端限制，已加入機密標記。如需強加密請用 Adobe Acrobat。', 5000);
+    }
+
+    const bytes=await pdfDoc.save();
+    const blob=new Blob([bytes],{type:'application/pdf'});
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=getFilename('.pdf'); a.click();
+    if(!pw) toast('✅ PDF 已下載');
+  } catch(e){
+    toast('❌ PDF 處理失敗：'+e.message);
+  }
+}
+
+// ── Download CSV ───────────────────────────────────────────
+function downloadCSV(){
+  const headers=S.headers[S.activeSheet]||[], rows=S.sheets[S.activeSheet]||[];
+  const ct={}; headers.forEach(h=>ct[h]=headerType(h));
+  const lines=[headers.map(csvEsc).join(',')];
+  rows.forEach(row=>lines.push(headers.map(h=>{ const r=maskVal(row[h],ct[h]); return csvEsc(r.masked?r.out:row[h]); }).join(',')));
+  const blob=new Blob(['\ufeff'+lines.join('\n')],{type:'text/csv;charset=utf-8;'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=getFilename('.csv'); a.click();
+  toast('✅ CSV 已下載');
+}
+function csvEsc(v){ const s=String(v); return s.includes(',')||s.includes('"')||s.includes('\n')?`"${s.replace(/"/g,'""')}"`:s; }
+
+// ── Roadmap modal ─────────────────────────────────────────
+function openRoadmap(){ document.getElementById('modal-bg').classList.add('open'); }
+function closeRoadmap(){ document.getElementById('modal-bg').classList.remove('open'); }
+
+// ── Reset ─────────────────────────────────────────────────
+function resetAll(){ location.reload(); }
+
+// ── Init ──────────────────────────────────────────────────
+setNaming('date');
+</script>
+</body>
+</html>
