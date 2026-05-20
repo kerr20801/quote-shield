@@ -7,7 +7,7 @@
 
 <!-- 外部函式庫 (CDN，需網路) -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@cantoo/pdf-lib/dist/pdf-lib.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 
 <style>
@@ -382,6 +382,24 @@ table.ptable tr:hover td { background: var(--bg); }
 }
 .toast.show { transform: translateX(-50%) translateY(0); }
 
+/* ── Templates ───────────────────────────────────────────── */
+.tpl-row { display:flex; gap:8px; margin-bottom:8px; }
+.tpl-select {
+  flex:1; padding:7px 11px; border:1px solid var(--border);
+  border-radius:var(--r); background:var(--bg); font-size:13px;
+  color:var(--text); outline:none; font-family:var(--font);
+}
+.tpl-select:focus { border-color:var(--accent); }
+.tpl-save-row { display:flex; gap:8px; }
+.tpl-save-row input {
+  flex:1; padding:7px 11px; border:1px solid var(--border);
+  border-radius:var(--r); background:var(--bg); font-size:13px;
+  color:var(--text); outline:none; font-family:var(--font);
+}
+.tpl-save-row input:focus { border-color:var(--accent); }
+.btn-sm.btn-ghost { background:var(--surface2); color:var(--text); border:1px solid var(--border2); }
+.btn-sm.btn-ghost:hover { background:var(--border); }
+
 /* ── Responsive ──────────────────────────────────────────── */
 @media (max-width: 640px) {
   .profiles   { grid-template-columns: 1fr 1fr; }
@@ -504,6 +522,18 @@ table.ptable tr:hover td { background: var(--bg); }
     <button class="btn-sm" onclick="addKw()">+ 加入</button>
   </div>
   <div class="kw-tags" id="kw-tags"></div>
+
+  <div class="divider"></div>
+  <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:9px;">常用設定範本</div>
+  <div class="tpl-row">
+    <select id="tpl-select" class="tpl-select"><option value="">— 選擇範本 —</option></select>
+    <button class="btn-sm" onclick="loadTemplate()">載入</button>
+    <button class="btn-sm btn-ghost" onclick="deleteTemplate()">刪除</button>
+  </div>
+  <div class="tpl-save-row">
+    <input type="text" id="tpl-name" placeholder="範本名稱（例：客戶版標準設定）">
+    <button class="btn-sm" onclick="saveTemplate()">💾 儲存範本</button>
+  </div>
 </div>
 
 <!-- ══════════════ CARD 4: Naming & Password ══════════════ -->
@@ -553,7 +583,7 @@ table.ptable tr:hover td { background: var(--bg); }
       <input type="checkbox" id="pw-enable" onchange="togglePw(this.checked)">
       <div>
         <strong>設定開啟密碼</strong>
-        <span style="display:block;font-size:11px;color:var(--muted);">PDF 支援開啟密碼保護；XLSX 支援工作表保護</span>
+        <span style="display:block;font-size:11px;color:var(--muted);">PDF 支援 AES 真實加密；XLSX 支援工作表保護</span>
       </div>
     </label>
   </div>
@@ -617,19 +647,23 @@ table.ptable tr:hover td { background: var(--bg); }
     </div>
     <div class="rm-item">
       <span class="rm-badge wip">已完成</span>
-      <div><p>PDF 密碼保護 / XLSX 工作表保護</p><span>下載時可選擇加密</span></div>
+      <div><p>PDF 真實加密保護 / XLSX 工作表保護</p><span>下載時可設定開啟密碼（PDF 使用 AES 加密）</span></div>
     </div>
     <div class="rm-item">
-      <span class="rm-badge plan">規劃中</span>
-      <div><p>PDF 黑塊遮蔽</p><span>讀取 PDF 文字層，指定關鍵字加黑色遮罩</span></div>
+      <span class="rm-badge wip">已完成</span>
+      <div><p>PDF 黑塊遮蔽</p><span>讀取 PDF 文字層，對應關鍵字/金額/電話/信箱加黑塊，輸出圖片型 PDF</span></div>
+    </div>
+    <div class="rm-item">
+      <span class="rm-badge wip">已完成</span>
+      <div><p>設定檔儲存</p><span>儲存常用遮蔽規則到本機（localStorage），下次直接載入</span></div>
+    </div>
+    <div class="rm-item">
+      <span class="rm-badge wip">已完成</span>
+      <div><p>電話 / Email 自動偵測</p><span>台灣手機、市話、Email 地址自動遮蔽</span></div>
     </div>
     <div class="rm-item">
       <span class="rm-badge dev">待開發</span>
       <div><p>批量處理</p><span>一次上傳多個報價單，套用同一組設定批次輸出</span></div>
-    </div>
-    <div class="rm-item">
-      <span class="rm-badge dev">待開發</span>
-      <div><p>設定檔儲存</p><span>儲存常用的遮蔽規則與關鍵字組合到本機</span></div>
     </div>
     <div class="rm-item">
       <span class="rm-badge dev">待開發</span>
@@ -736,11 +770,9 @@ function handleFile(file){
 
 function handlePDF(file){
   S.sheets = { '(PDF)': [] }; S.headers = { '(PDF)': [] }; S.activeSheet = '(PDF)';
-  // Store raw array for later use
   const r = new FileReader();
-  r.onload = e => { S.pdfBuffer = e.target.result; };
+  r.onload = e => { S.pdfBuffer = e.target.result; afterFileLoaded(file, 'pdf'); };
   r.readAsArrayBuffer(file);
-  afterFileLoaded(file, 'pdf');
 }
 
 function afterFileLoaded(file, ext){
@@ -880,6 +912,14 @@ function contentMask(val){
       result = result.replace(new RegExp(esc,'gi'), '【***】');
       didMask = true;
     }
+  }
+
+  // 1.5 電話號碼 + Email（勾選「業務員」時）
+  if(S.masked.contact){
+    const r1 = result.replace(/09\d{2}[-\s]?\d{3}[-\s]?\d{3}|0[2-8]\d[-\s]?\d{3,4}[-\s]?\d{4}/g, '【電話遮蔽】');
+    if(r1 !== result){ result = r1; didMask = true; }
+    const r2 = result.replace(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g, '【信箱遮蔽】');
+    if(r2 !== result){ result = r2; didMask = true; }
   }
 
   // 2. 金額掃描（勾選「報價金額」或「成本/利潤」時才掃）
@@ -1029,47 +1069,81 @@ function buildTable(headers,rows,ct){
 
 function switchSheet(n){ S.activeSheet=n; refreshPreview(); }
 
+// ── PDF helpers ───────────────────────────────────────────
+function pdfToCanvas(tx, ty, vp){
+  const [a,,c,d,e,f] = vp.transform;
+  return [a*tx + c*ty + e, d*ty + f];
+}
+
+function applyPDFRedact(ctx, textItems, vp){
+  ctx.fillStyle = '#000000';
+  let count = 0;
+  for(const item of textItems){
+    if(!item.str || item.str.trim() === '') continue;
+    const {masked} = contentMask(item.str);
+    if(!masked) continue;
+    count++;
+    const tx = item.transform[4], ty = item.transform[5];
+    const [cx, cy] = pdfToCanvas(tx, ty, vp);
+    const pdfH = item.height || Math.abs(item.transform[3]) || 12;
+    const pdfW = item.width  || item.str.length * pdfH * 0.6;
+    const [va] = vp.transform;
+    const s = Math.abs(va);
+    const h = pdfH * s;
+    const w = pdfW * s;
+    ctx.fillRect(cx - 1, cy - h - 1, w + 2, h + 2);
+  }
+  return count;
+}
+
 // ── PDF Preview ───────────────────────────────────────────
 async function renderPDFPreview(){
-  const body=document.getElementById('preview-body');
-  body.innerHTML='<div class="preview-empty"><span class="eico">⏳</span><p>載入 PDF 預覽中...</p></div>';
-  document.getElementById('stats-bar').innerHTML=
-    `<span class="sbadge total">PDF 格式</span>`+
-    `<span class="sbadge masked" style="background:var(--amber-lt);color:var(--amber);border-color:#E0C070;">⚠ PDF 遮蔽：關鍵字黑塊功能開發中</span>`;
+  const body = document.getElementById('preview-body');
+  body.innerHTML = '<div class="preview-empty"><span class="eico">⏳</span><p>載入 PDF 中...</p></div>';
   document.getElementById('view-btns').classList.add('hidden');
+  document.getElementById('stats-bar').innerHTML = `<span class="sbadge total">PDF 格式</span>`;
 
-  if(!S.pdfBuffer){ body.innerHTML='<div class="preview-empty"><span class="eico">📄</span><p>PDF 已就緒（無法預覽，直接下載）</p></div>'; return; }
+  if(!S.pdfBuffer){ body.innerHTML='<div class="preview-empty"><span class="eico">📄</span><p>PDF 尚未載入</p></div>'; return; }
 
   try {
-    pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
     const pdf = await pdfjsLib.getDocument({data: S.pdfBuffer.slice(0)}).promise;
-    const total = Math.min(pdf.numPages, 3);
-    body.innerHTML='';
-    const area = document.createElement('div'); area.className='pdf-preview-area'; body.appendChild(area);
+    const previewPages = Math.min(pdf.numPages, 5);
+    body.innerHTML = '';
+    const area = document.createElement('div'); area.className = 'pdf-preview-area'; body.appendChild(area);
 
-    for(let i=1;i<=total;i++){
+    let totalRedacted = 0;
+    for(let i = 1; i <= previewPages; i++){
       const page = await pdf.getPage(i);
-      const vp   = page.getViewport({scale:1.0});
-      const scale= Math.min(700/vp.width, 1.2);
-      const vp2  = page.getViewport({scale});
-      const canvas=document.createElement('canvas');
-      canvas.width=vp2.width; canvas.height=vp2.height;
-      const wrap=document.createElement('div'); wrap.className='pdf-page-wrap';
-      const lbl=document.createElement('div'); lbl.className='pdf-page-label'; lbl.textContent=`第 ${i} 頁 / 共 ${pdf.numPages} 頁`;
+      const origVp = page.getViewport({scale:1.0});
+      const scale = Math.min(700/origVp.width, 1.5);
+      const vp = page.getViewport({scale});
+      const canvas = document.createElement('canvas');
+      canvas.width = vp.width; canvas.height = vp.height;
+      const ctx = canvas.getContext('2d');
+      const wrap = document.createElement('div'); wrap.className = 'pdf-page-wrap';
+      const lbl  = document.createElement('div'); lbl.className = 'pdf-page-label';
+      lbl.textContent = `第 ${i} 頁 / 共 ${pdf.numPages} 頁`;
       wrap.appendChild(lbl); wrap.appendChild(canvas); area.appendChild(wrap);
-      await page.render({canvasContext:canvas.getContext('2d'), viewport:vp2}).promise;
+      await page.render({canvasContext: ctx, viewport: vp}).promise;
+      const textContent = await page.getTextContent();
+      totalRedacted += applyPDFRedact(ctx, textContent.items, vp);
     }
-    if(pdf.numPages>3){
-      const more=document.createElement('div');
-      more.style.cssText='text-align:center;padding:12px;font-size:12px;color:var(--muted);';
-      more.textContent=`... 還有 ${pdf.numPages-3} 頁（僅預覽前 3 頁）`;
+    if(pdf.numPages > previewPages){
+      const more = document.createElement('div');
+      more.style.cssText = 'text-align:center;padding:12px;font-size:12px;color:var(--muted);';
+      more.textContent = `... 還有 ${pdf.numPages-previewPages} 頁（僅預覽前 ${previewPages} 頁）`;
       body.appendChild(more);
     }
-    document.getElementById('btn-dl-main').disabled=false;
+    document.getElementById('stats-bar').innerHTML =
+      `<span class="sbadge total">PDF · ${pdf.numPages} 頁</span>` +
+      `<span class="sbadge masked">🛡 預覽遮蔽 ${totalRedacted} 處</span>`;
+    document.getElementById('btn-dl-main').disabled = false;
     stepActivate(4); updateFilenamePreview();
   } catch(e){
-    body.innerHTML='<div class="preview-empty"><span class="eico">📄</span><p>無法預覽此 PDF，但仍可下載</p></div>';
-    document.getElementById('btn-dl-main').disabled=false;
+    body.innerHTML = '<div class="preview-empty"><span class="eico">📄</span><p>無法預覽此 PDF，但仍可下載</p></div>';
+    document.getElementById('btn-dl-main').disabled = false;
+    console.error(e);
   }
 }
 
@@ -1116,38 +1190,57 @@ function downloadXLSX(){
   toast('✅ XLSX 已下載'+(pw?' (已加密保護)':''));
 }
 
-// ── Download PDF (with optional password) ─────────────────
-async function downloadPDF(){
-  const pw=getPw(); if(pw===false) return;
-  if(!S.pdfBuffer){ toast('❌ PDF 尚未載入'); return; }
-  toast('⏳ 處理中...', 8000);
-  try {
-    const { PDFDocument, rgb } = PDFLib;
-    const pdfDoc = await PDFDocument.load(S.pdfBuffer);
+// ── Download PDF (real redaction + real encryption) ────────
+function canvasToPngBytes(canvas){
+  const url = canvas.toDataURL('image/png');
+  const b64 = url.split(',')[1];
+  const raw = atob(b64);
+  const out = new Uint8Array(raw.length);
+  for(let i=0;i<raw.length;i++) out[i] = raw.charCodeAt(i);
+  return out;
+}
 
-    // If password requested, we embed a warning page note (pdf-lib free version
-    // does not support AES encryption natively; we add a visible notice)
-    if(pw){
-      // Add metadata note and first-page stamp as the best we can do in pure JS
-      pdfDoc.setTitle('[密碼保護版] '+( S.file?.name||'document'));
-      pdfDoc.setSubject('此文件由報價遮蔽工具產生，請妥善保管。');
-      // Stamp first page corner
-      const pages=pdfDoc.getPages();
-      if(pages.length>0){
-        const p=pages[0];
-        const {height}=p.getSize();
-        p.drawRectangle({x:0,y:height-28,width:220,height:22,color:rgb(0.79,0.31,0.16)});
-        p.drawText('🔒 機密文件 – 請確認收件人身份',{x:6,y:height-20,size:10,color:rgb(1,1,1)});
-      }
-      toast('⚠ PDF 密碼：純前端限制，已加入機密標記。如需強加密請用 Adobe Acrobat。', 5000);
+async function downloadPDF(){
+  const pw = getPw(); if(pw===false) return;
+  if(!S.pdfBuffer){ toast('❌ PDF 尚未載入'); return; }
+  toast('⏳ 處理中...', 20000);
+  try {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    const pdfJs  = await pdfjsLib.getDocument({data: S.pdfBuffer.slice(0)}).promise;
+    const { PDFDocument } = PDFLib;
+    const newDoc = await PDFDocument.create();
+
+    for(let i=1; i<=pdfJs.numPages; i++){
+      const page   = await pdfJs.getPage(i);
+      const origVp = page.getViewport({scale:1.0});
+      const vp     = page.getViewport({scale:2.0});
+      const canvas = document.createElement('canvas');
+      canvas.width = vp.width; canvas.height = vp.height;
+      const ctx = canvas.getContext('2d');
+      await page.render({canvasContext:ctx, viewport:vp}).promise;
+      const textContent = await page.getTextContent();
+      applyPDFRedact(ctx, textContent.items, vp);
+
+      const pngBytes = canvasToPngBytes(canvas);
+      const pngImg   = await newDoc.embedPng(pngBytes);
+      const pdfPage  = newDoc.addPage([origVp.width, origVp.height]);
+      pdfPage.drawImage(pngImg, {x:0, y:0, width:origVp.width, height:origVp.height});
     }
 
-    const bytes=await pdfDoc.save();
-    const blob=new Blob([bytes],{type:'application/pdf'});
-    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=getFilename('.pdf'); a.click();
-    if(!pw) toast('✅ PDF 已下載');
+    if(pw){
+      await newDoc.encrypt({
+        userPassword: pw, ownerPassword: pw,
+        permissions: { printing:'highResolution', copying:false, modifying:false, annotating:false }
+      });
+    }
+
+    const bytes = await newDoc.save();
+    const blob  = new Blob([bytes], {type:'application/pdf'});
+    const a = document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=getFilename('.pdf'); a.click();
+    toast('✅ PDF 已下載' + (pw ? '（已加密）' : ''));
   } catch(e){
     toast('❌ PDF 處理失敗：'+e.message);
+    console.error(e);
   }
 }
 
@@ -1170,8 +1263,64 @@ function closeRoadmap(){ document.getElementById('modal-bg').classList.remove('o
 // ── Reset ─────────────────────────────────────────────────
 function resetAll(){ location.reload(); }
 
+// ── localStorage Templates ────────────────────────────────
+const TPL_KEY = 'qs-templates';
+
+function loadTemplateList(){
+  const stored = JSON.parse(localStorage.getItem(TPL_KEY) || '{}');
+  const sel = document.getElementById('tpl-select');
+  const prev = sel.value;
+  sel.innerHTML = '<option value="">— 選擇範本 —</option>';
+  Object.keys(stored).sort().forEach(name => {
+    const opt = document.createElement('option');
+    opt.value = name; opt.textContent = name;
+    sel.appendChild(opt);
+  });
+  if(prev) sel.value = prev;
+}
+
+function saveTemplate(){
+  const name = document.getElementById('tpl-name').value.trim();
+  if(!name){ toast('❌ 請輸入範本名稱'); return; }
+  const stored = JSON.parse(localStorage.getItem(TPL_KEY) || '{}');
+  stored[name] = { masked:{...S.masked}, kwList:[...S.kwList], naming:S.naming, profile:S.profile };
+  localStorage.setItem(TPL_KEY, JSON.stringify(stored));
+  loadTemplateList();
+  document.getElementById('tpl-select').value = name;
+  toast(`✅ 範本「${name}」已儲存`);
+}
+
+function loadTemplate(){
+  const name = document.getElementById('tpl-select').value;
+  if(!name){ toast('請先選擇範本'); return; }
+  const stored = JSON.parse(localStorage.getItem(TPL_KEY) || '{}');
+  const tpl = stored[name]; if(!tpl){ toast('❌ 找不到範本'); return; }
+  Object.entries(tpl.masked||{}).forEach(([k,v]) => {
+    S.masked[k] = v;
+    const el = document.getElementById('mt-'+k);
+    if(el){ el.classList.toggle('on',v); el.querySelector('input').checked = v; }
+  });
+  S.kwList = [...(tpl.kwList||[])];
+  renderKwTags();
+  if(tpl.naming) setNaming(tpl.naming);
+  if(tpl.profile) selectProfile(tpl.profile);
+  toast(`✅ 已載入範本「${name}」`);
+  refreshPreview();
+}
+
+function deleteTemplate(){
+  const name = document.getElementById('tpl-select').value;
+  if(!name){ toast('請先選擇要刪除的範本'); return; }
+  const stored = JSON.parse(localStorage.getItem(TPL_KEY) || '{}');
+  delete stored[name];
+  localStorage.setItem(TPL_KEY, JSON.stringify(stored));
+  loadTemplateList();
+  toast(`🗑 範本「${name}」已刪除`);
+}
+
 // ── Init ──────────────────────────────────────────────────
 setNaming('date');
+loadTemplateList();
 </script>
 </body>
 </html>
