@@ -4,9 +4,6 @@
 >
 > Clean sensitive data from quotes before sending. Runs entirely in your browser — files never leave your machine.
 
-**[▶ 立即使用 / Launch](https://your-url-here)** · 不需安裝 · 不需登入 · 完全免費
-<br>No install · No login · Completely free
-
 ---
 
 ## 這是什麼？ / What is it?
