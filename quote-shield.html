@@ -3,41 +3,41 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>報價遮蔽工具 · Quote Shield</title>
+<title>報價遮蔽工具 Pro · Quote Shield</title>
 
-<!-- 外部函式庫 (CDN，需網路) -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@cantoo/pdf-lib/dist/pdf-lib.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 
 <style>
-/* ── Reset & Tokens ──────────────────────────────────────── */
+/* ── Reset & Tokens ──────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --bg:           #F4F2ED;
-  --surface:      #FDFCFA;
-  --surface2:     #F0EDE7;
-  --border:       #E0DCD4;
-  --border2:      #C8C2B6;
-  --text:         #1C1A16;
-  --muted:        #6B6460;
-  --hint:         #9E9890;
-  --accent:       #C94F28;
-  --accent-lt:    #FAEAE4;
-  --accent-dk:    #9E3A1C;
-  --green:        #2A6E46;
-  --green-lt:     #E2F0E8;
-  --amber:        #A07018;
-  --amber-lt:     #FBF2DC;
-  --blue:         #1B5FAA;
-  --blue-lt:      #E4EEF9;
-  --r:            8px;
-  --r-lg:         12px;
-  --shadow:       0 2px 16px rgba(28,26,22,.09);
-  --shadow-sm:    0 1px 6px rgba(28,26,22,.06);
-  --font:         'Segoe UI', 'PingFang TC', 'Noto Sans TC', sans-serif;
-  --mono:         'JetBrains Mono', 'Consolas', monospace;
+  --bg:        #F4F2ED;
+  --surface:   #FDFCFA;
+  --surface2:  #F0EDE7;
+  --border:    #E0DCD4;
+  --border2:   #C8C2B6;
+  --text:      #1C1A16;
+  --muted:     #6B6460;
+  --hint:      #9E9890;
+  --accent:    #C94F28;
+  --accent-lt: #FAEAE4;
+  --accent-dk: #9E3A1C;
+  --green:     #2A6E46;
+  --green-lt:  #E2F0E8;
+  --amber:     #A07018;
+  --amber-lt:  #FBF2DC;
+  --blue:      #1B5FAA;
+  --blue-lt:   #E4EEF9;
+  --r:         8px;
+  --r-lg:      12px;
+  --shadow:    0 2px 16px rgba(28,26,22,.09);
+  --shadow-sm: 0 1px 6px rgba(28,26,22,.06);
+  --font:      'Segoe UI', 'PingFang TC', 'Noto Sans TC', sans-serif;
+  --mono:      'JetBrains Mono', 'Consolas', monospace;
 }
 
 body {
@@ -49,10 +49,10 @@ body {
   min-height: 100vh;
 }
 
-/* ── Layout ──────────────────────────────────────────────── */
+/* ── Layout ────────────────────────────────────────────────── */
 .app { max-width: 980px; margin: 0 auto; padding: 28px 18px 60px; }
 
-/* ── Header ──────────────────────────────────────────────── */
+/* ── Header ────────────────────────────────────────────────── */
 .header {
   display: flex; align-items: center; justify-content: space-between;
   margin-bottom: 28px; padding-bottom: 18px; border-bottom: 1px solid var(--border);
@@ -65,15 +65,24 @@ body {
 }
 .logo h1 { font-size: 18px; font-weight: 700; letter-spacing: -.02em; }
 .logo p  { font-size: 12px; color: var(--muted); }
-
 .roadmap-badge {
   font-size: 11px; color: var(--amber); background: var(--amber-lt);
   border: 1px solid #E0C070; border-radius: 20px;
   padding: 4px 11px; cursor: pointer; transition: opacity .15s;
 }
 .roadmap-badge:hover { opacity: .75; }
+/* ── Lang Switcher ─────────────────────────────────────────── */
+.lang-btn {
+  font-size: 11px; font-weight: 700; letter-spacing: .04em;
+  background: var(--surface2); border: 1px solid var(--border2);
+  border-radius: 20px; padding: 4px 13px; cursor: pointer;
+  color: var(--muted); transition: all .15s; font-family: var(--font);
+}
+.lang-btn:hover { border-color: var(--accent); color: var(--accent); }
+.header-right { display: flex; align-items: center; gap: 8px; }
 
-/* ── Steps ───────────────────────────────────────────────── */
+
+/* ── Steps ─────────────────────────────────────────────────── */
 .steps {
   display: flex; gap: 0; margin-bottom: 24px;
   background: var(--surface); border: 1px solid var(--border);
@@ -96,7 +105,7 @@ body {
 .step-item.active .step-num { background: var(--accent); border-color: var(--accent); color: #fff; }
 .step-item.done   .step-num { background: var(--green);  border-color: var(--green);  color: #fff; }
 
-/* ── Card ────────────────────────────────────────────────── */
+/* ── Card ──────────────────────────────────────────────────── */
 .card {
   background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--r-lg); padding: 22px 24px;
@@ -113,9 +122,8 @@ body {
   display: flex; align-items: center; justify-content: center;
   font-size: 10px; font-weight: 700; flex-shrink: 0;
 }
-.card.muted { opacity: .5; pointer-events: none; }
 
-/* ── Upload Zone ─────────────────────────────────────────── */
+/* ── Upload Zone ───────────────────────────────────────────── */
 .upload-zone {
   border: 2px dashed var(--border2); border-radius: var(--r);
   padding: 36px 20px; text-align: center; cursor: pointer;
@@ -138,7 +146,7 @@ body {
 .change-link { font-size: 11px; color: var(--accent); cursor: pointer; text-decoration: underline; margin-top: 3px; display: block; }
 input[type=file] { display: none; }
 
-/* ── Profile Picker ──────────────────────────────────────── */
+/* ── Profile Picker ────────────────────────────────────────── */
 .profiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
 .pcard {
   border: 2px solid var(--border); border-radius: var(--r);
@@ -157,7 +165,7 @@ input[type=file] { display: none; }
 }
 .pcard.sel .chk { background: var(--accent); border-color: var(--accent); color: #fff; }
 
-/* ── Mask Toggles ────────────────────────────────────────── */
+/* ── Mask Toggles ──────────────────────────────────────────── */
 .mask-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; }
 .mtog {
   display: flex; align-items: center; gap: 10px;
@@ -176,6 +184,19 @@ input[type=file] { display: none; }
 .mtog.on .mtog-ico { background: var(--accent); }
 .mtog-txt strong { font-size: 12px; font-weight: 700; display: block; }
 .mtog-txt span   { font-size: 11px; color: var(--muted); }
+
+/* ── OCR Toggle (special) ──────────────────────────────────── */
+.ocr-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 14px; border: 1px solid var(--border);
+  border-radius: var(--r); background: var(--bg); margin-top: 12px;
+  cursor: pointer; transition: all .2s;
+}
+.ocr-row.on { border-color: var(--amber); background: var(--amber-lt); }
+.ocr-row input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--amber); cursor: pointer; flex-shrink: 0; }
+.ocr-row .ocr-ico { font-size: 20px; }
+.ocr-row strong { font-size: 13px; }
+.ocr-row span   { font-size: 11px; color: var(--muted); display: block; }
 
 /* Custom keywords */
 .kw-row { display: flex; gap: 8px; margin-bottom: 9px; }
@@ -200,7 +221,7 @@ input[type=file] { display: none; }
 }
 .kwtag .x { cursor: pointer; font-size: 13px; color: var(--accent); margin-left: 2px; }
 
-/* ── File Naming ─────────────────────────────────────────── */
+/* ── File Naming ───────────────────────────────────────────── */
 .naming-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; margin-bottom: 14px; }
 .ncard {
   border: 2px solid var(--border); border-radius: var(--r);
@@ -224,7 +245,7 @@ input[type=file] { display: none; }
 .custom-suffix-row input:focus { border-color: var(--accent); }
 .custom-suffix-row span { font-size: 12px; color: var(--muted); white-space: nowrap; }
 
-/* ── Password ────────────────────────────────────────────── */
+/* ── Password ──────────────────────────────────────────────── */
 .pw-toggle-row {
   display: flex; align-items: center; gap: 12px;
   padding: 12px 14px; border: 1px solid var(--border);
@@ -248,7 +269,7 @@ input[type=file] { display: none; }
 .pw-strength { height: 4px; border-radius: 2px; background: var(--border); margin-top: 4px; overflow: hidden; }
 .pw-strength-bar { height: 100%; width: 0; transition: width .3s, background .3s; border-radius: 2px; }
 
-/* ── Preview ─────────────────────────────────────────────── */
+/* ── Preview ───────────────────────────────────────────────── */
 .view-btns { display: flex; gap: 4px; margin-bottom: 10px; }
 .view-btn {
   padding: 5px 13px; font-size: 12px; border: 1px solid var(--border);
@@ -308,19 +329,41 @@ table.ptable tr:hover td { background: var(--bg); }
 }
 .preview-empty .eico { font-size: 32px; }
 
-/* PDF preview */
-.pdf-preview-area {
-  display: flex; flex-direction: column; gap: 12px; padding: 14px;
-}
+/* ── PDF Canvas Area ───────────────────────────────────────── */
+.pdf-preview-area { display: flex; flex-direction: column; gap: 16px; padding: 14px; }
 .pdf-page-wrap {
   border: 1px solid var(--border); border-radius: var(--r);
   overflow: hidden; background: #fff; text-align: center;
 }
-.pdf-page-wrap canvas { max-width: 100%; height: auto; display: block; margin: 0 auto; }
-.pdf-page-label { font-size: 11px; color: var(--muted); padding: 5px 0; background: var(--bg); }
+.pdf-page-wrap canvas {
+  max-width: 100%; height: auto; display: block; margin: 0 auto;
+  cursor: crosshair; /* 手動框選模式 */
+}
+.pdf-page-label { font-size: 11px; color: var(--muted); padding: 5px 10px; background: var(--bg); display: flex; align-items: center; justify-content: space-between; }
+.pdf-page-label .draw-hint { font-size: 10px; color: var(--accent); font-weight: 600; }
 
-/* ── Actions ─────────────────────────────────────────────── */
-.action-bar { display: flex; gap: 10px; flex-wrap: wrap; }
+/* ── Manual Draw Tip Banner ────────────────────────────────── */
+.draw-banner {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 10px 14px; background: var(--amber-lt);
+  border: 1px solid #E0C070; border-radius: var(--r);
+  margin-bottom: 12px; font-size: 12px;
+}
+.draw-banner .dico { font-size: 18px; flex-shrink: 0; }
+
+/* OCR progress */
+.ocr-progress {
+  padding: 12px 14px; background: var(--blue-lt);
+  border: 1px solid #BBCFE8; border-radius: var(--r);
+  font-size: 12px; color: var(--blue); margin-bottom: 10px;
+  display: none;
+}
+.ocr-progress.show { display: block; }
+.ocr-bar-wrap { height: 4px; background: var(--border); border-radius: 2px; margin-top: 6px; overflow: hidden; }
+.ocr-bar { height: 100%; background: var(--blue); border-radius: 2px; transition: width .3s; width: 0; }
+
+/* ── Actions ───────────────────────────────────────────────── */
+.action-bar { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
 .btn {
   padding: 11px 20px; border: none; border-radius: var(--r);
   font-family: var(--font); font-size: 13px; font-weight: 700;
@@ -335,54 +378,13 @@ table.ptable tr:hover td { background: var(--bg); }
 .btn.second:disabled { opacity: .4; cursor: not-allowed; }
 .btn.ghost     { background: transparent; border: 1px solid var(--border); color: var(--muted); }
 .btn.ghost:hover { border-color: var(--border2); color: var(--text); }
+.btn.danger    { background: transparent; border: 1px solid #E8B0A4; color: var(--accent); }
+.btn.danger:hover { background: var(--accent-lt); }
 
-/* ── Divider ─────────────────────────────────────────────── */
+/* ── Divider ───────────────────────────────────────────────── */
 .divider { height: 1px; background: var(--border); margin: 14px 0; }
 
-/* ── Roadmap Modal ───────────────────────────────────────── */
-.modal-bg {
-  display: none; position: fixed; inset: 0; background: rgba(0,0,0,.45);
-  z-index: 100; align-items: center; justify-content: center;
-}
-.modal-bg.open { display: flex; }
-.modal {
-  background: var(--surface); border-radius: var(--r-lg);
-  border: 1px solid var(--border); padding: 28px;
-  max-width: 460px; width: 90%; box-shadow: var(--shadow);
-}
-.modal h2 { font-size: 16px; font-weight: 700; margin-bottom: 16px; }
-.rm-item {
-  display: flex; align-items: flex-start; gap: 12px;
-  padding: 12px 0; border-bottom: 1px solid var(--border);
-}
-.rm-item:last-child { border-bottom: none; }
-.rm-badge {
-  flex-shrink: 0; padding: 2px 9px; border-radius: 20px; font-size: 11px; font-weight: 700;
-}
-.rm-badge.dev   { background: var(--amber-lt); color: var(--amber); border: 1px solid #E0C070; }
-.rm-badge.plan  { background: var(--blue-lt);  color: var(--blue);  border: 1px solid #BBCFE8; }
-.rm-badge.wip   { background: var(--green-lt); color: var(--green); border: 1px solid #B0D8BE; }
-.rm-item p { font-size: 13px; font-weight: 600; }
-.rm-item span { font-size: 11px; color: var(--muted); }
-.modal-close {
-  display: block; margin-top: 18px; text-align: center;
-  padding: 9px; border: 1px solid var(--border); border-radius: var(--r);
-  cursor: pointer; font-size: 13px; color: var(--muted); background: var(--bg);
-}
-.modal-close:hover { color: var(--text); border-color: var(--border2); }
-
-/* ── Toast ───────────────────────────────────────────────── */
-.toast {
-  position: fixed; bottom: 22px; left: 50%;
-  transform: translateX(-50%) translateY(80px);
-  background: var(--text); color: #fff; padding: 10px 20px;
-  border-radius: var(--r); font-size: 13px; font-weight: 600;
-  z-index: 200; transition: transform .3s; white-space: nowrap;
-  box-shadow: var(--shadow);
-}
-.toast.show { transform: translateX(-50%) translateY(0); }
-
-/* ── Templates ───────────────────────────────────────────── */
+/* ── Templates ─────────────────────────────────────────────── */
 .tpl-row { display:flex; gap:8px; margin-bottom:8px; }
 .tpl-select {
   flex:1; padding:7px 11px; border:1px solid var(--border);
@@ -400,11 +402,54 @@ table.ptable tr:hover td { background: var(--bg); }
 .btn-sm.btn-ghost { background:var(--surface2); color:var(--text); border:1px solid var(--border2); }
 .btn-sm.btn-ghost:hover { background:var(--border); }
 
-/* ── Responsive ──────────────────────────────────────────── */
+/* ── Roadmap Modal ─────────────────────────────────────────── */
+.modal-bg {
+  display: none; position: fixed; inset: 0; background: rgba(0,0,0,.45);
+  z-index: 100; align-items: center; justify-content: center;
+}
+.modal-bg.open { display: flex; }
+.modal {
+  background: var(--surface); border-radius: var(--r-lg);
+  border: 1px solid var(--border); padding: 28px;
+  max-width: 480px; width: 90%; box-shadow: var(--shadow);
+  max-height: 90vh; overflow-y: auto;
+}
+.modal h2 { font-size: 16px; font-weight: 700; margin-bottom: 16px; }
+.rm-item {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 12px 0; border-bottom: 1px solid var(--border);
+}
+.rm-item:last-child { border-bottom: none; }
+.rm-badge {
+  flex-shrink: 0; padding: 2px 9px; border-radius: 20px; font-size: 11px; font-weight: 700;
+}
+.rm-badge.dev  { background: var(--amber-lt); color: var(--amber); border: 1px solid #E0C070; }
+.rm-badge.wip  { background: var(--green-lt); color: var(--green); border: 1px solid #B0D8BE; }
+.rm-item p { font-size: 13px; font-weight: 600; }
+.rm-item span { font-size: 11px; color: var(--muted); }
+.modal-close {
+  display: block; margin-top: 18px; text-align: center;
+  padding: 9px; border: 1px solid var(--border); border-radius: var(--r);
+  cursor: pointer; font-size: 13px; color: var(--muted); background: var(--bg);
+}
+.modal-close:hover { color: var(--text); border-color: var(--border2); }
+
+/* ── Toast ─────────────────────────────────────────────────── */
+.toast {
+  position: fixed; bottom: 22px; left: 50%;
+  transform: translateX(-50%) translateY(80px);
+  background: var(--text); color: #fff; padding: 10px 20px;
+  border-radius: var(--r); font-size: 13px; font-weight: 600;
+  z-index: 200; transition: transform .3s; white-space: nowrap;
+  box-shadow: var(--shadow);
+}
+.toast.show { transform: translateX(-50%) translateY(0); }
+
+/* ── Responsive ────────────────────────────────────────────── */
 @media (max-width: 640px) {
-  .profiles   { grid-template-columns: 1fr 1fr; }
-  .mask-grid  { grid-template-columns: 1fr 1fr; }
-  .naming-grid{ grid-template-columns: 1fr; }
+  .profiles  { grid-template-columns: 1fr 1fr; }
+  .mask-grid { grid-template-columns: 1fr 1fr; }
+  .naming-grid { grid-template-columns: 1fr; }
   .step-item span:not(.step-num) { display: none; }
 }
 .hidden { display: none !important; }
@@ -418,153 +463,166 @@ table.ptable tr:hover td { background: var(--bg); }
   <div class="logo">
     <div class="logo-icon">🛡</div>
     <div>
-      <h1>報價遮蔽工具</h1>
-      <p>發送前清理敏感資訊 · 資料不離開本機</p>
+      <h1 id="t-app-title">報價遮蔽工具 Pro</h1>
+      <p id="t-app-sub">自動偵測 · 手動框選 · OCR辨識 · 資料不離開本機</p>
     </div>
   </div>
-  <button class="roadmap-badge" onclick="openRoadmap()">📋 開發路線圖</button>
+  <div class="header-right">
+    <button class="lang-btn" id="lang-btn" onclick="toggleLang()">EN</button>
+    <button class="roadmap-badge" onclick="openRoadmap()" id="t-roadmap-btn">📋 功能說明</button>
+  </div>
 </div>
 
 <!-- ── Steps ── -->
 <div class="steps">
-  <div class="step-item active" id="s1"><span class="step-num" id="sn1">1</span><span>上傳檔案</span></div>
-  <div class="step-item" id="s2"><span class="step-num" id="sn2">2</span><span>發送對象</span></div>
-  <div class="step-item" id="s3"><span class="step-num" id="sn3">3</span><span>遮蔽設定</span></div>
-  <div class="step-item" id="s4"><span class="step-num" id="sn4">4</span><span>存檔設定</span></div>
+  <div class="step-item active" id="s1"><span class="step-num" id="sn1">1</span><span data-i18n="step1">上傳檔案</span></div>
+  <div class="step-item" id="s2"><span class="step-num" id="sn2">2</span><span data-i18n="step2">發送對象</span></div>
+  <div class="step-item" id="s3"><span class="step-num" id="sn3">3</span><span data-i18n="step3">遮蔽設定</span></div>
+  <div class="step-item" id="s4"><span class="step-num" id="sn4">4</span><span data-i18n="step4">存檔設定</span></div>
 </div>
 
 <!-- ══════════════ CARD 1: Upload ══════════════ -->
 <div class="card" id="card-upload">
-  <div class="card-title"><div class="n">1</div>上傳報價檔案</div>
+  <div class="card-title"><div class="n">1</div><span data-i18n="card1-title">上傳報價檔案</span></div>
   <label class="upload-zone" id="upload-zone" for="file-input">
     <span class="ico">📂</span>
-    <strong>點擊選擇或拖曳檔案到這裡</strong>
-    <small>支援 .xlsx · .xls · .csv · .pdf 格式</small>
-    <span class="privacy">🔒 檔案只在您的瀏覽器中處理，不會上傳到任何伺服器</span>
+    <strong data-i18n="upload-main">點擊選擇或拖曳檔案到這裡</strong>
+    <small data-i18n="upload-fmt">支援 .xlsx · .xls · .pdf 格式</small>
+    <span class="privacy" data-i18n="upload-privacy">🔒 檔案只在您的瀏覽器中處理，不會上傳到任何伺服器</span>
   </label>
-  <input type="file" id="file-input" accept=".xlsx,.xls,.csv,.pdf">
+  <input type="file" id="file-input" accept=".xlsx,.xls,.pdf">
 </div>
 
 <!-- ══════════════ CARD 2: Profile ══════════════ -->
 <div class="card hidden" id="card-profile">
-  <div class="card-title"><div class="n">2</div>選擇發送對象</div>
+  <div class="card-title"><div class="n">2</div><span data-i18n="card2-title">選擇發送對象</span></div>
   <div class="profiles">
     <div class="pcard" id="p-client" onclick="selectProfile('client')">
       <div style="display:flex;justify-content:space-between;">
         <span class="pico">👔</span><span class="chk" id="pc-client">✓</span>
       </div>
-      <strong>寄給客戶</strong>
-      <p>隱藏成本、利潤、供應商、內部備註</p>
+      <strong data-i18n="p-client-title">寄給客戶</strong>
+      <p data-i18n="p-client-desc">隱藏成本、利潤、供應商、內部備註</p>
     </div>
     <div class="pcard" id="p-internal" onclick="selectProfile('internal')">
       <div style="display:flex;justify-content:space-between;">
         <span class="pico">🏢</span><span class="chk" id="pc-internal">✓</span>
       </div>
-      <strong>內部分享</strong>
-      <p>隱藏客戶名稱、折扣金額</p>
+      <strong data-i18n="p-internal-title">內部分享</strong>
+      <p data-i18n="p-internal-desc">隱藏客戶名稱、折扣金額</p>
     </div>
     <div class="pcard" id="p-partner" onclick="selectProfile('partner')">
       <div style="display:flex;justify-content:space-between;">
         <span class="pico">🤝</span><span class="chk" id="pc-partner">✓</span>
       </div>
-      <strong>合作夥伴</strong>
-      <p>隱藏客戶名稱、成本結構</p>
+      <strong data-i18n="p-partner-title">合作夥伴</strong>
+      <p data-i18n="p-partner-desc">隱藏客戶名稱、成本結構</p>
     </div>
     <div class="pcard" id="p-custom" onclick="selectProfile('custom')">
       <div style="display:flex;justify-content:space-between;">
         <span class="pico">⚙️</span><span class="chk" id="pc-custom">✓</span>
       </div>
-      <strong>自訂</strong>
-      <p>手動選擇要遮蔽的欄位</p>
+      <strong data-i18n="p-custom-title">自訂</strong>
+      <p data-i18n="p-custom-desc">手動選擇要遮蔽的欄位</p>
     </div>
   </div>
 </div>
 
 <!-- ══════════════ CARD 3: Mask Config ══════════════ -->
 <div class="card hidden" id="card-config">
-  <div class="card-title"><div class="n">3</div>設定遮蔽內容</div>
+  <div class="card-title"><div class="n">3</div><span data-i18n="card3-title">設定遮蔽內容</span></div>
   <div class="mask-grid">
     <label class="mtog on" id="mt-client">
       <input type="checkbox" checked onchange="toggleMask('client',this.checked)">
       <div class="mtog-ico">🏢</div>
-      <div class="mtog-txt"><strong>客戶名稱</strong><span>公司名、聯絡人</span></div>
+      <div class="mtog-txt"><strong data-i18n="mt-client-t">客戶名稱</strong><span data-i18n="mt-client-s">公司名、聯絡人</span></div>
     </label>
     <label class="mtog on" id="mt-price">
       <input type="checkbox" checked onchange="toggleMask('price',this.checked)">
       <div class="mtog-ico">💰</div>
-      <div class="mtog-txt"><strong>報價金額</strong><span>單價、總價、折扣</span></div>
+      <div class="mtog-txt"><strong data-i18n="mt-price-t">報價金額</strong><span data-i18n="mt-price-s">單價、總價、折扣</span></div>
     </label>
     <label class="mtog on" id="mt-cost">
       <input type="checkbox" checked onchange="toggleMask('cost',this.checked)">
       <div class="mtog-ico">📊</div>
-      <div class="mtog-txt"><strong>成本 / 利潤</strong><span>進價、毛利</span></div>
+      <div class="mtog-txt"><strong data-i18n="mt-cost-t">成本 / 利潤</strong><span data-i18n="mt-cost-s">進價、毛利</span></div>
     </label>
     <label class="mtog on" id="mt-note">
       <input type="checkbox" checked onchange="toggleMask('note',this.checked)">
       <div class="mtog-ico">📝</div>
-      <div class="mtog-txt"><strong>內部備註</strong><span>備註、說明欄</span></div>
+      <div class="mtog-txt"><strong data-i18n="mt-note-t">內部備註</strong><span data-i18n="mt-note-s">備註、說明欄</span></div>
     </label>
     <label class="mtog" id="mt-supplier">
       <input type="checkbox" onchange="toggleMask('supplier',this.checked)">
       <div class="mtog-ico">🏭</div>
-      <div class="mtog-txt"><strong>供應商</strong><span>供應商名、料號</span></div>
+      <div class="mtog-txt"><strong data-i18n="mt-supplier-t">供應商</strong><span data-i18n="mt-supplier-s">供應商名、料號</span></div>
     </label>
     <label class="mtog" id="mt-contact">
       <input type="checkbox" onchange="toggleMask('contact',this.checked)">
       <div class="mtog-ico">👤</div>
-      <div class="mtog-txt"><strong>業務員</strong><span>姓名、聯絡方式</span></div>
+      <div class="mtog-txt"><strong data-i18n="mt-contact-t">業務員</strong><span data-i18n="mt-contact-s">姓名、聯絡方式</span></div>
     </label>
   </div>
+
   <div class="divider"></div>
   <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:9px;">額外關鍵字（輸入後按 Enter）</div>
   <div class="kw-row">
-    <input type="text" id="kw-in" placeholder="例：ABC公司、某某工程師..." onkeydown="if(event.key==='Enter')addKw()">
-    <button class="btn-sm" onclick="addKw()">+ 加入</button>
+    <input type="text" id="kw-in" placeholder="例：ABC公司、某某工程師..." data-i18n-ph="kw-ph" onkeydown="if(event.key==='Enter')addKw()">
+    <button class="btn-sm" onclick="addKw()" data-i18n="kw-add">+ 加入</button>
   </div>
   <div class="kw-tags" id="kw-tags"></div>
 
+  <!-- OCR 選項（PDF 才顯示）-->
+  <div class="ocr-row hidden" id="ocr-toggle-row" onclick="toggleOCR()">
+    <input type="checkbox" id="ocr-chk">
+    <span class="ocr-ico">🔍</span>
+    <div>
+      <strong data-i18n="ocr-title">啟用 OCR 圖片辨識</strong>
+      <span data-i18n="ocr-desc">掃描型 PDF / 含圖片的 PDF 也能偵測 — 首次啟用會下載約 20MB 語言包</span>
+    </div>
+  </div>
+
   <div class="divider"></div>
-  <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:9px;">常用設定範本</div>
+  <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:9px;" data-i18n="tpl-section">常用設定範本</div>
   <div class="tpl-row">
     <select id="tpl-select" class="tpl-select"><option value="">— 選擇範本 —</option></select>
-    <button class="btn-sm" onclick="loadTemplate()">載入</button>
-    <button class="btn-sm btn-ghost" onclick="deleteTemplate()">刪除</button>
+    <button class="btn-sm" onclick="loadTemplate()" data-i18n="tpl-load">載入</button>
+    <button class="btn-sm btn-ghost" onclick="deleteTemplate()" data-i18n="tpl-del">刪除</button>
   </div>
   <div class="tpl-save-row">
-    <input type="text" id="tpl-name" placeholder="範本名稱（例：客戶版標準設定）">
-    <button class="btn-sm" onclick="saveTemplate()">💾 儲存範本</button>
+    <input type="text" id="tpl-name" placeholder="範本名稱（例：客戶版標準設定）" data-i18n-ph="tpl-name-ph">
+    <button class="btn-sm" onclick="saveTemplate()" data-i18n="tpl-save">💾 儲存範本</button>
   </div>
 </div>
 
 <!-- ══════════════ CARD 4: Naming & Password ══════════════ -->
 <div class="card hidden" id="card-save">
-  <div class="card-title"><div class="n">4</div>存檔設定</div>
+  <div class="card-title"><div class="n">4</div><span data-i18n="card4-title">存檔設定</span></div>
 
-  <!-- Naming -->
-  <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:10px;">檔名後綴</div>
+  <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:10px;" data-i18n="naming-section">檔名後綴</div>
   <div class="naming-grid">
     <div class="ncard sel" id="nc-date" onclick="setNaming('date')">
-      <strong>加日期</strong>
+      <strong data-i18n="nc-date-t">加日期</strong>
       <span class="ex">報價單_20260120.xlsx</span>
     </div>
     <div class="ncard" id="nc-masked" onclick="setNaming('masked')">
-      <strong>加「已遮蔽」</strong>
+      <strong data-i18n="nc-masked-t">加「已遮蔽」</strong>
       <span class="ex">報價單_已遮蔽.xlsx</span>
     </div>
     <div class="ncard" id="nc-profile" onclick="setNaming('profile')">
-      <strong>加對象名稱</strong>
+      <strong data-i18n="nc-profile-t">加對象名稱</strong>
       <span class="ex">報價單_客戶版.xlsx</span>
     </div>
     <div class="ncard" id="nc-datetime" onclick="setNaming('datetime')">
-      <strong>加日期時間</strong>
+      <strong data-i18n="nc-datetime-t">加日期時間</strong>
       <span class="ex">報價單_20260120_1430.xlsx</span>
     </div>
     <div class="ncard" id="nc-custom" onclick="setNaming('custom')">
-      <strong>自訂後綴</strong>
+      <strong data-i18n="nc-custom-t">自訂後綴</strong>
       <span class="ex">報價單_v2.xlsx</span>
     </div>
     <div class="ncard" id="nc-none" onclick="setNaming('none')">
-      <strong>不加後綴</strong>
+      <strong data-i18n="nc-none-t">不加後綴</strong>
       <span class="ex">報價單.xlsx</span>
     </div>
   </div>
@@ -574,44 +632,60 @@ table.ptable tr:hover td { background: var(--bg); }
   </div>
   <div class="filename-preview" id="fname-preview">預覽：等待上傳檔案...</div>
 
-  <div class="divider"></div>
-
-  <!-- Password -->
-  <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:10px;">開啟密碼</div>
-  <div class="pw-toggle-row">
-    <label>
-      <input type="checkbox" id="pw-enable" onchange="togglePw(this.checked)">
-      <div>
-        <strong>設定開啟密碼</strong>
-        <span style="display:block;font-size:11px;color:var(--muted);">PDF 支援 AES 真實加密；XLSX 支援工作表保護</span>
+  <!-- 密碼區：只有 PDF 才顯示 -->
+  <div id="pw-section" class="hidden">
+    <div class="divider"></div>
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:10px;" data-i18n="pw-section-title">開啟密碼</div>
+    <div class="pw-toggle-row">
+      <label>
+        <input type="checkbox" id="pw-enable" onchange="togglePw(this.checked)">
+        <div>
+          <strong data-i18n="pw-title">設定 PDF 開啟密碼</strong>
+          <span style="display:block;font-size:11px;color:var(--muted);">AES 真實加密，收件人需輸入密碼才能開啟</span>
+        </div>
+      </label>
+    </div>
+    <div class="pw-fields" id="pw-fields">
+      <div class="pw-input-row">
+        <label>密碼</label>
+        <input type="password" id="pw-val" placeholder="輸入密碼" oninput="onPwInput()">
       </div>
-    </label>
-  </div>
-  <div class="pw-fields" id="pw-fields">
-    <div class="pw-input-row">
-      <label>密碼</label>
-      <input type="password" id="pw-val" placeholder="輸入密碼" oninput="onPwInput()">
+      <div class="pw-strength"><div class="pw-strength-bar" id="pw-bar"></div></div>
+      <div class="pw-input-row">
+        <label>確認密碼</label>
+        <input type="password" id="pw-confirm" placeholder="再次輸入">
+      </div>
+      <div class="pw-info" id="pw-info">下載的 PDF 會要求輸入密碼才能開啟</div>
     </div>
-    <div class="pw-strength"><div class="pw-strength-bar" id="pw-bar"></div></div>
-    <div class="pw-input-row">
-      <label>確認密碼</label>
-      <input type="password" id="pw-confirm" placeholder="再次輸入">
-    </div>
-    <div class="pw-info" id="pw-info">PDF 會要求輸入密碼才能開啟；XLSX 會鎖定所有工作表</div>
   </div>
 </div>
 
 <!-- ══════════════ CARD 5: Preview & Download ══════════════ -->
 <div class="card hidden" id="card-preview">
-  <div class="card-title"><div class="n">5</div>預覽 &amp; 下載</div>
+  <div class="card-title"><div class="n">5</div><span data-i18n="card5-title">預覽 &amp; 下載</span></div>
 
   <div class="stats-bar" id="stats-bar"></div>
   <div class="sheet-tabs hidden" id="sheet-tabs"></div>
 
+  <!-- XLSX view buttons -->
   <div class="view-btns" id="view-btns">
     <button class="view-btn active" onclick="setView('masked')">🛡 遮蔽後</button>
     <button class="view-btn" onclick="setView('original')">👁 原始</button>
     <button class="view-btn" onclick="setView('compare')">⬌ 對照</button>
+  </div>
+
+  <!-- PDF: draw hint banner -->
+  <div class="draw-banner hidden" id="draw-banner">
+    <span class="dico">✏️</span>
+    <div>
+      <span data-i18n="draw-banner-text"><strong>手動補遮蔽</strong>：在下方 PDF 預覽圖上<strong>按住滑鼠拖曳</strong>，即可手動畫上黑色遮蔽塊。Logo、印章、漏掉的文字都能補塗。</span>
+    </div>
+  </div>
+
+  <!-- OCR progress bar -->
+  <div class="ocr-progress" id="ocr-progress">
+    <span id="ocr-status">OCR 辨識中...</span>
+    <div class="ocr-bar-wrap"><div class="ocr-bar" id="ocr-bar"></div></div>
   </div>
 
   <div class="preview-wrap">
@@ -624,10 +698,11 @@ table.ptable tr:hover td { background: var(--bg); }
     </div>
   </div>
 
-  <div style="margin-top:16px;" class="action-bar" id="action-bar">
-    <button class="btn primary" id="btn-dl-main" onclick="downloadMain()" disabled>⬇ 下載（XLSX）</button>
-    <button class="btn second"  id="btn-dl-csv"  onclick="downloadCSV()"  disabled>⬇ 下載 CSV</button>
-    <button class="btn ghost"   onclick="resetAll()">↺ 重新開始</button>
+  <div class="action-bar" id="action-bar">
+    <button class="btn primary" id="btn-dl-main" onclick="downloadMain()" disabled data-i18n="btn-dl-xlsx">⬇ 下載 XLSX</button>
+    <button class="btn second"  id="btn-dl-csv"  onclick="downloadCSV()"  disabled data-i18n="btn-dl-csv-label">⬇ 下載 CSV</button>
+    <button class="btn danger"  id="btn-undo-draw" onclick="undoLastDraw()" style="display:none;" data-i18n="btn-undo">↩ 復原最後一筆</button>
+    <button class="btn ghost"   onclick="resetAll()" data-i18n="btn-reset">↺ 重新開始</button>
   </div>
 </div>
 
@@ -636,30 +711,30 @@ table.ptable tr:hover td { background: var(--bg); }
 <!-- ══════════════ Roadmap Modal ══════════════ -->
 <div class="modal-bg" id="modal-bg" onclick="if(event.target===this)closeRoadmap()">
   <div class="modal">
-    <h2>📋 開發路線圖</h2>
+    <h2 data-i18n="modal-title">📋 功能說明</h2>
     <div class="rm-item">
-      <span class="rm-badge wip">已完成</span>
-      <div><p>XLSX / CSV 欄位遮蔽</p><span>依欄位標題關鍵字自動偵測並遮蔽</span></div>
+      <span class="rm-badge wip">✓ 完成</span>
+      <div><p>XLSX / CSV 欄位自動遮蔽</p><span>依欄位標題關鍵字自動偵測並遮蔽，支援多工作表</span></div>
     </div>
     <div class="rm-item">
-      <span class="rm-badge wip">已完成</span>
-      <div><p>自訂存檔後綴</p><span>日期、時間、對象、自訂文字</span></div>
+      <span class="rm-badge wip">✓ 完成</span>
+      <div><p>PDF 文字層自動遮蔽</p><span>讀取 PDF 文字層，對應關鍵字/金額/電話/信箱加黑塊</span></div>
     </div>
     <div class="rm-item">
-      <span class="rm-badge wip">已完成</span>
-      <div><p>PDF 真實加密保護 / XLSX 工作表保護</p><span>下載時可設定開啟密碼（PDF 使用 AES 加密）</span></div>
+      <span class="rm-badge wip">✓ 完成</span>
+      <div><p>✏️ 手動框選塗黑（NEW）</p><span>在 PDF 預覽上直接用滑鼠拖曳，手動補塗 Logo、印章、漏掉的文字</span></div>
     </div>
     <div class="rm-item">
-      <span class="rm-badge wip">已完成</span>
-      <div><p>PDF 黑塊遮蔽</p><span>讀取 PDF 文字層，對應關鍵字/金額/電話/信箱加黑塊，輸出圖片型 PDF</span></div>
+      <span class="rm-badge wip">✓ 完成</span>
+      <div><p>🔍 OCR 圖片辨識（NEW）</p><span>掃描型 PDF 或含圖片的 PDF，用 Tesseract 辨識後自動遮蔽敏感資訊</span></div>
     </div>
     <div class="rm-item">
-      <span class="rm-badge wip">已完成</span>
-      <div><p>設定檔儲存</p><span>儲存常用遮蔽規則到本機（localStorage），下次直接載入</span></div>
+      <span class="rm-badge wip">✓ 完成</span>
+      <div><p>PDF / XLSX 加密保護</p><span>PDF 使用 AES 真實加密；XLSX 支援工作表密碼保護</span></div>
     </div>
     <div class="rm-item">
-      <span class="rm-badge wip">已完成</span>
-      <div><p>電話 / Email 自動偵測</p><span>台灣手機、市話、Email 地址自動遮蔽</span></div>
+      <span class="rm-badge wip">✓ 完成</span>
+      <div><p>設定範本儲存與載入</p><span>常用遮蔽規則儲存到本機，下次直接套用</span></div>
     </div>
     <div class="rm-item">
       <span class="rm-badge dev">待開發</span>
@@ -678,6 +753,8 @@ table.ptable tr:hover td { background: var(--bg); }
 
 <!-- ══════════════ JS ══════════════ -->
 <script>
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
 // ── Constants ────────────────────────────────────────────
 const MASK_KW = {
   client:   ['客戶','公司','客户','client','company','聯絡','聯絡人','contact','買方','甲方'],
@@ -710,17 +787,21 @@ const S = {
   sheets: {}, headers: {}, activeSheet: '',
   masked: { client:true, price:true, cost:true, note:true, supplier:false, contact:false },
   kwList: [], profile: null, view: 'masked', naming: 'date', pwEnabled: false,
+  pdfBuffer: null,
+  // PDF canvas tracking for manual draw + undo
+  pdfCanvases: [],     // [{canvas, ctx, savedStates:[]}]
+  useOCR: false,
 };
 
-// ── Toast ─────────────────────────────────────────────────
+// ── Toast ──────────────────────────────────────────────────
 let _tid;
-function toast(msg,dur=2800){
-  const el=document.getElementById('toast');
-  el.textContent=msg; el.classList.add('show');
-  clearTimeout(_tid); _tid=setTimeout(()=>el.classList.remove('show'),dur);
+function toast(msg, dur=2800){
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.classList.add('show');
+  clearTimeout(_tid); _tid = setTimeout(()=>el.classList.remove('show'), dur);
 }
 
-// ── Step indicator ────────────────────────────────────────
+// ── Step indicator ─────────────────────────────────────────
 function stepActivate(n){
   for(let i=1;i<=4;i++){
     const s=document.getElementById('s'+i);
@@ -730,7 +811,7 @@ function stepActivate(n){
   }
 }
 
-// ── File Upload ───────────────────────────────────────────
+// ── File Upload ────────────────────────────────────────────
 const zone = document.getElementById('upload-zone');
 document.getElementById('file-input').addEventListener('change', e => { if(e.target.files[0]) handleFile(e.target.files[0]); });
 zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag'); });
@@ -743,7 +824,7 @@ function handleFile(file){
   S.fileType = (ext==='pdf') ? 'pdf' : 'xlsx';
 
   if(S.fileType === 'pdf'){
-    handlePDF(file);
+    handlePDFFile(file);
   } else {
     const r = new FileReader();
     r.onload = e => {
@@ -762,13 +843,13 @@ function handleFile(file){
         });
         S.activeSheet = wb.SheetNames[0];
         afterFileLoaded(file, ext);
-      } catch(err){ toast('❌ 無法讀取檔案，請確認格式正確'); }
+      } catch(err){ toast(T('toast-file-err')); }
     };
     r.readAsArrayBuffer(file);
   }
 }
 
-function handlePDF(file){
+function handlePDFFile(file){
   S.sheets = { '(PDF)': [] }; S.headers = { '(PDF)': [] }; S.activeSheet = '(PDF)';
   const r = new FileReader();
   r.onload = e => { S.pdfBuffer = e.target.result; afterFileLoaded(file, 'pdf'); };
@@ -776,26 +857,32 @@ function handlePDF(file){
 }
 
 function afterFileLoaded(file, ext){
-  // Update zone UI
   const sz = file.size>1048576 ? (file.size/1048576).toFixed(1)+'MB' : Math.round(file.size/1024)+'KB';
   const ico = ext==='pdf'?'📄':'📊';
-  zone.innerHTML=`<div class="file-row"><div class="file-ico">${ico}</div><div class="file-meta"><strong>${file.name}</strong><span>${sz}</span><span class="change-link" onclick="resetFile(event)">更換檔案</span></div></div>`;
+  zone.innerHTML=`<div class="file-row"><div class="file-ico">${ico}</div><div class="file-meta"><strong>${file.name}</strong><span>${sz}</span><span class="change-link" onclick="resetFile(event)">${T('change-file')}</span></div></div>`;
   zone.classList.add('done');
 
-  // Show all cards
   ['card-profile','card-config','card-save','card-preview'].forEach(id=>document.getElementById(id).classList.remove('hidden'));
 
-  // Update download button label
-  document.getElementById('btn-dl-main').textContent = '⬇ 下載（'+(ext==='pdf'?'PDF':'XLSX')+')';
-
-  // PDF: hide view-btns, CSV btn; XLSX: show them
+  // PDF vs XLSX: button labels, password section, draw controls
   if(ext==='pdf'){
+    document.getElementById('btn-dl-main').textContent = T('btn-dl-pdf');
+    document.getElementById('btn-dl-csv').style.display = 'none';
+    document.getElementById('btn-undo-draw').style.display = 'flex';
+    document.getElementById('ocr-toggle-row').classList.remove('hidden');
+    document.getElementById('draw-banner').classList.remove('hidden');
     document.getElementById('view-btns').classList.add('hidden');
-    document.getElementById('btn-dl-csv').classList.add('hidden');
+    document.getElementById('pw-section').classList.remove('hidden');
     renderPDFPreview();
   } else {
+    document.getElementById('btn-dl-main').textContent = T('btn-dl-xlsx2');
+    document.getElementById('btn-dl-csv').style.display = '';
+    document.getElementById('btn-dl-csv').disabled = true;
+    document.getElementById('btn-undo-draw').style.display = 'none';
+    document.getElementById('ocr-toggle-row').classList.add('hidden');
+    document.getElementById('draw-banner').classList.add('hidden');
     document.getElementById('view-btns').classList.remove('hidden');
-    document.getElementById('btn-dl-csv').classList.remove('hidden');
+    document.getElementById('pw-section').classList.add('hidden');
   }
 
   stepActivate(2);
@@ -806,14 +893,23 @@ function afterFileLoaded(file, ext){
 function resetFile(e){
   e.preventDefault(); e.stopPropagation();
   document.getElementById('file-input').value='';
-  zone.innerHTML=`<span class="ico">📂</span><strong>點擊選擇或拖曳檔案到這裡</strong><small>支援 .xlsx · .xls · .csv · .pdf 格式</small><span class="privacy">🔒 檔案只在您的瀏覽器中處理，不會上傳到任何伺服器</span>`;
+  zone.innerHTML=`<span class="ico">📂</span><strong>${T('upload-main')}</strong><small>${T('upload-fmt')}</small><span class="privacy">${T('upload-privacy')}</span>`;
   zone.classList.remove('done');
   ['card-profile','card-config','card-save','card-preview'].forEach(id=>document.getElementById(id).classList.add('hidden'));
-  S.file=null; S.wb=null; S.sheets={}; S.headers={}; S.pdfBuffer=null;
+  S.file=null; S.wb=null; S.sheets={}; S.headers={}; S.pdfBuffer=null; S.pdfCanvases=[];
   stepActivate(1);
 }
 
-// ── Profile ───────────────────────────────────────────────
+// ── OCR Toggle ────────────────────────────────────────────
+function toggleOCR(){
+  const chk = document.getElementById('ocr-chk');
+  chk.checked = !chk.checked;
+  S.useOCR = chk.checked;
+  document.getElementById('ocr-toggle-row').classList.toggle('on', S.useOCR);
+  if(S.fileType==='pdf') renderPDFPreview();
+}
+
+// ── Profile ────────────────────────────────────────────────
 function selectProfile(key){
   S.profile = key;
   document.querySelectorAll('.pcard').forEach(c=>c.classList.remove('sel'));
@@ -829,14 +925,14 @@ function selectProfile(key){
   refreshPreview();
 }
 
-// ── Mask toggles ──────────────────────────────────────────
-function toggleMask(key,val){
+// ── Mask toggles ───────────────────────────────────────────
+function toggleMask(key, val){
   S.masked[key]=val;
   document.getElementById('mt-'+key).classList.toggle('on',val);
   refreshPreview();
 }
 
-// ── Keywords ──────────────────────────────────────────────
+// ── Keywords ───────────────────────────────────────────────
 function addKw(){
   const inp=document.getElementById('kw-in'), v=inp.value.trim();
   if(!v||S.kwList.includes(v)){inp.value='';return;}
@@ -850,7 +946,7 @@ function renderKwTags(){
   ).join('');
 }
 
-// ── Naming ────────────────────────────────────────────────
+// ── Naming ─────────────────────────────────────────────────
 function setNaming(key){
   S.naming=key;
   document.querySelectorAll('.ncard').forEach(c=>c.classList.remove('sel'));
@@ -859,14 +955,14 @@ function setNaming(key){
   updateFilenamePreview();
 }
 function updateFilenamePreview(){
-  if(!S.file){ document.getElementById('fname-preview').textContent='預覽：等待上傳檔案...'; return; }
+  if(!S.file){ document.getElementById('fname-preview').textContent=T('fname-waiting'); return; }
   const base = S.file.name.replace(/\.[^.]+$/,'');
   const ext  = S.fileType==='pdf' ? '.pdf' : '.xlsx';
   const suffix = (NAMING_SUFFIX[S.naming]||NAMING_SUFFIX.date)();
-  document.getElementById('fname-preview').textContent = `預覽：${base}${suffix}${ext}`;
+  document.getElementById('fname-preview').textContent = T('fname-preview', `${base}${suffix}${ext}`);
 }
 
-// ── Password ──────────────────────────────────────────────
+// ── Password ───────────────────────────────────────────────
 function togglePw(on){
   S.pwEnabled=on;
   document.getElementById('pw-fields').classList.toggle('show',on);
@@ -874,21 +970,17 @@ function togglePw(on){
 function onPwInput(){
   const v=document.getElementById('pw-val').value;
   let w=0;
-  if(v.length>=8) w+=30;
-  if(v.length>=12) w+=20;
-  if(/[A-Z]/.test(v)) w+=15;
-  if(/[0-9]/.test(v)) w+=15;
+  if(v.length>=8) w+=30; if(v.length>=12) w+=20;
+  if(/[A-Z]/.test(v)) w+=15; if(/[0-9]/.test(v)) w+=15;
   if(/[^A-Za-z0-9]/.test(v)) w+=20;
   const bar=document.getElementById('pw-bar');
   bar.style.width=w+'%';
   bar.style.background = w<40?'#E24B4A':w<70?'#BA7517':'#2A6E46';
 }
 
-// ── Core mask logic ───────────────────────────────────────
-// 金額 pattern：每次呼叫回傳新 RegExp 避免 /g lastIndex 污染
+// ── Core mask logic ────────────────────────────────────────
 function AMOUNT_RE(){ return /(\$|NT\$|USD|NTD|¥|€)[\s]?[\d,]+(\.\d+)?|\b\d{1,3}(,\d{3})+(\.\d+)?\b/g; }
 
-// 標題型偵測（欄位名稱含關鍵字 → 整欄遮蔽）
 function headerType(h){
   const lo=String(h).toLowerCase();
   for(const [type,kws] of Object.entries(MASK_KW)){
@@ -898,14 +990,11 @@ function headerType(h){
   return null;
 }
 
-// 內容型偵測（不管欄位名，直接看格子裡的值）
 function contentMask(val){
   if(val===''||val===null||val===undefined) return {out:val, masked:false};
   const s = String(val);
-  let result = s;
-  let didMask = false;
+  let result = s, didMask = false;
 
-  // 1. 自訂關鍵字（最高優先）
   for(const kw of S.kwList){
     const esc = kw.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
     if(new RegExp(esc,'i').test(result)){
@@ -914,7 +1003,6 @@ function contentMask(val){
     }
   }
 
-  // 1.5 電話號碼 + Email（勾選「業務員」時）
   if(S.masked.contact){
     const r1 = result.replace(/09\d{2}[-\s]?\d{3}[-\s]?\d{3}|0[2-8]\d[-\s]?\d{3,4}[-\s]?\d{4}/g, '【電話遮蔽】');
     if(r1 !== result){ result = r1; didMask = true; }
@@ -922,28 +1010,20 @@ function contentMask(val){
     if(r2 !== result){ result = r2; didMask = true; }
   }
 
-  // 2. 金額掃描（勾選「報價金額」或「成本/利潤」時才掃）
   if(S.masked.price || S.masked.cost){
-    const replaced = result.replace(AMOUNT_RE(), m => {
-      didMask = true;
-      return '【金額遮蔽】';
-    });
+    const replaced = result.replace(AMOUNT_RE(), m => { didMask = true; return '【金額遮蔽】'; });
     if(replaced !== result){ result = replaced; didMask = true; }
   }
 
-  // 3. 純數字儲存格（勾選金額時，若整格是數字也遮蔽）
   if(!didMask && (S.masked.price || S.masked.cost)){
-    if(typeof val === 'number' && val > 0){
+    if(typeof val === 'number' && val > 0)
       return {out:'【金額遮蔽】', masked:true, type:'price'};
-    }
   }
 
-  // 4. 標題關鍵字掃描（備註、客戶名等欄位的文字內容）
   if(!didMask){
     const lo = s.toLowerCase();
     for(const [type, kws] of Object.entries(MASK_KW)){
       if(!S.masked[type]) continue;
-      // 只對 client / supplier / contact 做文字內容掃描，避免誤殺說明文字
       if(!['client','supplier','contact'].includes(type)) continue;
       if(kws.some(k => lo.includes(k))){
         result = `【${TYPE_LABEL(type)}遮蔽】`;
@@ -958,12 +1038,9 @@ function contentMask(val){
 
 function TYPE_LABEL(t){ return {client:'客戶',price:'金額',cost:'成本',note:'備註',supplier:'供應商',contact:'聯絡'}[t]||'資料'; }
 
-// 統一入口：先看欄位標題，再看內容
 function maskVal(val, colType){
   if(val===''||val===null||val===undefined) return {out:val, masked:false};
   const s = String(val);
-
-  // 自訂關鍵字永遠先跑
   let result = s, didKw = false;
   for(const kw of S.kwList){
     const esc = kw.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
@@ -974,7 +1051,6 @@ function maskVal(val, colType){
   }
   if(didKw) return {out:result, masked:true, type:'custom'};
 
-  // 如果欄位標題有命中 → 整格遮蔽
   if(colType){
     if(colType==='price'||colType==='cost'){
       if(typeof val==='number'||AMOUNT_RE().test(s)||/^[\d,.\s]+$/.test(s.trim()))
@@ -984,12 +1060,10 @@ function maskVal(val, colType){
       return {out:s[0]+'…'+s[s.length-1], masked:true, type:colType};
     return {out:`【${TYPE_LABEL(colType)}遮蔽】`, masked:true, type:colType};
   }
-
-  // 欄位標題沒命中 → 內容掃描（適用「敘述型」報價單）
   return contentMask(val);
 }
 
-// ── Preview ───────────────────────────────────────────────
+// ── Preview ────────────────────────────────────────────────
 function setView(v){
   S.view=v;
   document.querySelectorAll('.view-btn').forEach((b,i)=>{
@@ -1017,12 +1091,12 @@ function refreshPreview(){
   rows.forEach(row=>headers.forEach(h=>{ if(maskVal(row[h],ct[h]).masked) maskedCount++; }));
 
   document.getElementById('stats-bar').innerHTML=
-    `<span class="sbadge total">共 ${rows.length} 列</span>`+
-    `<span class="sbadge sheet">${headers.length} 欄</span>`+
-    `<span class="sbadge masked">🛡 ${maskedCount} 處遮蔽</span>`;
+    `<span class="sbadge total">${T('sbadge-rows', rows.length)}</span>`+
+    `<span class="sbadge sheet">${T('sbadge-cols', headers.length)}</span>`+
+    `<span class="sbadge masked">${T('sbadge-masked', maskedCount)}</span>`;
 
   const preview=rows.slice(0,50);
-  document.getElementById('preview-count').textContent=`${Math.min(preview.length,50)} / ${rows.length} 列`;
+  document.getElementById('preview-count').textContent=`${Math.min(preview.length,50)} / ${rows.length}`;
   document.getElementById('preview-body').innerHTML=
     headers.length ? buildTable(headers,preview,ct) :
     `<div class="preview-empty"><span class="eico">📋</span><p>無法讀取資料</p></div>`;
@@ -1069,7 +1143,7 @@ function buildTable(headers,rows,ct){
 
 function switchSheet(n){ S.activeSheet=n; refreshPreview(); }
 
-// ── PDF helpers ───────────────────────────────────────────
+// ── PDF helpers ────────────────────────────────────────────
 function pdfToCanvas(tx, ty, vp){
   const [a,,c,d,e,f] = vp.transform;
   return [a*tx + c*ty + e, d*ty + f];
@@ -1096,58 +1170,175 @@ function applyPDFRedact(ctx, textItems, vp){
   return count;
 }
 
-// ── PDF Preview ───────────────────────────────────────────
+// ── Manual Draw Setup ──────────────────────────────────────
+function setupManualDrawing(canvas, ctx, pageEntry){
+  let isDrawing = false;
+  let startX = 0, startY = 0;
+  let savedImageData = null;
+
+  function getPos(e){
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    return [
+      (clientX - rect.left) * scaleX,
+      (clientY - rect.top)  * scaleY
+    ];
+  }
+
+  function onStart(e){
+    e.preventDefault();
+    isDrawing = true;
+    [startX, startY] = getPos(e);
+    // Save state for undo
+    savedImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  }
+
+  function onMove(e){
+    if(!isDrawing) return;
+    e.preventDefault();
+    const [curX, curY] = getPos(e);
+    ctx.putImageData(savedImageData, 0, 0);
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(startX, startY, curX - startX, curY - startY);
+  }
+
+  function onEnd(e){
+    if(!isDrawing) return;
+    isDrawing = false;
+    const [endX, endY] = getPos(e instanceof TouchEvent ? {clientX: e.changedTouches[0].clientX, clientY: e.changedTouches[0].clientY} : e);
+    ctx.putImageData(savedImageData, 0, 0);
+    // Save undo history before committing
+    pageEntry.savedStates.push(savedImageData);
+    if(pageEntry.savedStates.length > 20) pageEntry.savedStates.shift(); // cap history
+    ctx.fillStyle = 'black';
+    ctx.fillRect(startX, startY, endX - startX, endY - startY);
+  }
+
+  function onLeave(){
+    if(isDrawing){ isDrawing = false; ctx.putImageData(savedImageData, 0, 0); }
+  }
+
+  canvas.addEventListener('mousedown',  onStart);
+  canvas.addEventListener('mousemove',  onMove);
+  canvas.addEventListener('mouseup',    onEnd);
+  canvas.addEventListener('mouseleave', onLeave);
+  canvas.addEventListener('touchstart', onStart, {passive:false});
+  canvas.addEventListener('touchmove',  onMove,  {passive:false});
+  canvas.addEventListener('touchend',   onEnd);
+}
+
+// ── Undo last draw ─────────────────────────────────────────
+function undoLastDraw(){
+  let didUndo = false;
+  for(const pg of S.pdfCanvases){
+    if(pg.savedStates.length > 0){
+      const prev = pg.savedStates.pop();
+      pg.ctx.putImageData(prev, 0, 0);
+      didUndo = true;
+    }
+  }
+  if(!didUndo) toast(T('toast-undo-none'));
+  else toast(T('toast-undo-ok'));
+}
+
+// ── PDF Preview (with manual draw + optional OCR) ──────────
 async function renderPDFPreview(){
   const body = document.getElementById('preview-body');
-  body.innerHTML = '<div class="preview-empty"><span class="eico">⏳</span><p>載入 PDF 中...</p></div>';
-  document.getElementById('view-btns').classList.add('hidden');
+  body.innerHTML = `<div class="preview-empty"><span class="eico">⏳</span><p>${T('pdf-loading')}</p></div>`;
   document.getElementById('stats-bar').innerHTML = `<span class="sbadge total">PDF 格式</span>`;
+  S.pdfCanvases = [];
 
-  if(!S.pdfBuffer){ body.innerHTML='<div class="preview-empty"><span class="eico">📄</span><p>PDF 尚未載入</p></div>'; return; }
+  if(!S.pdfBuffer){ body.innerHTML=`<div class="preview-empty"><span class="eico">📄</span><p>${T('pdf-no-buf')}</p></div>`; return; }
 
   try {
-    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
     const pdf = await pdfjsLib.getDocument({data: S.pdfBuffer.slice(0)}).promise;
-    const previewPages = Math.min(pdf.numPages, 5);
+    const previewPages = Math.min(pdf.numPages, 6);
     body.innerHTML = '';
     const area = document.createElement('div'); area.className = 'pdf-preview-area'; body.appendChild(area);
 
     let totalRedacted = 0;
+
     for(let i = 1; i <= previewPages; i++){
-      const page = await pdf.getPage(i);
-      const origVp = page.getViewport({scale:1.0});
-      const scale = Math.min(700/origVp.width, 1.5);
-      const vp = page.getViewport({scale});
-      const canvas = document.createElement('canvas');
-      canvas.width = vp.width; canvas.height = vp.height;
-      const ctx = canvas.getContext('2d');
+      const page    = await pdf.getPage(i);
+      const origVp  = page.getViewport({scale:1.0});
+      const scale   = Math.min(700/origVp.width, 2.5);
+      const vp      = page.getViewport({scale});
+      const canvas  = document.createElement('canvas');
+      canvas.width  = vp.width; canvas.height = vp.height;
+      const ctx     = canvas.getContext('2d');
+
       const wrap = document.createElement('div'); wrap.className = 'pdf-page-wrap';
       const lbl  = document.createElement('div'); lbl.className = 'pdf-page-label';
-      lbl.textContent = `第 ${i} 頁 / 共 ${pdf.numPages} 頁`;
+      lbl.innerHTML = `<span>${T('pdf-page-label', i, pdf.numPages)}</span><span class="draw-hint">${T('draw-hint')}</span>`;
       wrap.appendChild(lbl); wrap.appendChild(canvas); area.appendChild(wrap);
+
       await page.render({canvasContext: ctx, viewport: vp}).promise;
+
+      // Text-layer auto redaction
       const textContent = await page.getTextContent();
       totalRedacted += applyPDFRedact(ctx, textContent.items, vp);
+
+      // Track canvas for draw + undo
+      const pageEntry = { canvas, ctx, savedStates: [] };
+      S.pdfCanvases.push(pageEntry);
+      setupManualDrawing(canvas, ctx, pageEntry);
+
+      // OCR (if enabled)
+      if(S.useOCR){
+        const prog = document.getElementById('ocr-progress');
+        const bar  = document.getElementById('ocr-bar');
+        const stat = document.getElementById('ocr-status');
+        prog.classList.add('show');
+        stat.textContent = T('ocr-status', i, previewPages);
+        bar.style.width  = Math.round((i/previewPages)*100)+'%';
+
+        try {
+          const result = await Tesseract.recognize(canvas, 'eng+chi_tra', {
+            logger: m => { if(m.status==='recognizing text') bar.style.width = Math.round(m.progress*100)+'%'; }
+          });
+          ctx.fillStyle = 'black';
+          result.data.words.forEach(word => {
+            const text = word.text.trim();
+            if(!text) return;
+            const {masked} = contentMask(text);
+            if(masked){
+              const b = word.bbox;
+              ctx.fillRect(b.x0-2, b.y0-2, (b.x1-b.x0)+4, (b.y1-b.y0)+4);
+              totalRedacted++;
+            }
+          });
+        } catch(ocrErr){ console.warn('OCR error on page', i, ocrErr); }
+
+        if(i === previewPages) prog.classList.remove('show');
+      }
     }
+
     if(pdf.numPages > previewPages){
       const more = document.createElement('div');
       more.style.cssText = 'text-align:center;padding:12px;font-size:12px;color:var(--muted);';
-      more.textContent = `... 還有 ${pdf.numPages-previewPages} 頁（僅預覽前 ${previewPages} 頁）`;
+      more.textContent = T('pdf-more', pdf.numPages-previewPages, previewPages);
       body.appendChild(more);
     }
+
     document.getElementById('stats-bar').innerHTML =
-      `<span class="sbadge total">PDF · ${pdf.numPages} 頁</span>` +
-      `<span class="sbadge masked">🛡 預覽遮蔽 ${totalRedacted} 處</span>`;
+      `<span class="sbadge total">${T('sbadge-pdf', pdf.numPages)}</span>` +
+      `<span class="sbadge masked">${T('sbadge-auto', totalRedacted)}</span>` +
+      (S.useOCR ? `<span class="sbadge sheet">${T('sbadge-ocr')}</span>` : '');
+
     document.getElementById('btn-dl-main').disabled = false;
     stepActivate(4); updateFilenamePreview();
+
   } catch(e){
-    body.innerHTML = '<div class="preview-empty"><span class="eico">📄</span><p>無法預覽此 PDF，但仍可下載</p></div>';
+    body.innerHTML = `<div class="preview-empty"><span class="eico">📄</span><p>${T('pdf-no-preview')}</p></div>`;
     document.getElementById('btn-dl-main').disabled = false;
     console.error(e);
   }
 }
 
-// ── Get filename ──────────────────────────────────────────
+// ── Get filename ───────────────────────────────────────────
 function getFilename(forceExt){
   const base = (S.file?.name||'output').replace(/\.[^.]+$/,'');
   const suffix= (NAMING_SUFFIX[S.naming]||NAMING_SUFFIX.date)();
@@ -1155,17 +1346,17 @@ function getFilename(forceExt){
   return base+suffix+ext;
 }
 
-// ── PW validation ─────────────────────────────────────────
+// ── PW validation ──────────────────────────────────────────
 function getPw(){
   if(!S.pwEnabled) return null;
   const pw=document.getElementById('pw-val').value;
   const cf=document.getElementById('pw-confirm').value;
-  if(!pw){ toast('❌ 請輸入密碼'); return false; }
-  if(pw!==cf){ toast('❌ 兩次密碼不符'); return false; }
+  if(!pw){ toast(T('toast-pw-empty')); return false; }
+  if(pw!==cf){ toast(T('toast-pw-mismatch')); return false; }
   return pw;
 }
 
-// ── Download XLSX ─────────────────────────────────────────
+// ── Download main ──────────────────────────────────────────
 async function downloadMain(){
   if(S.fileType==='pdf'){ await downloadPDF(); return; }
   downloadXLSX();
@@ -1181,16 +1372,14 @@ function downloadXLSX(){
     rows.forEach(row=>out.push(headers.map(h=>{const r=maskVal(row[h],ct[h]);return r.masked?r.out:row[h];})));
     const ws=XLSX.utils.aoa_to_sheet(out);
     if(pw){
-      // Sheet protection (password)
       ws['!protect']={password:pw,sheet:true,formatCells:false,formatColumns:false,formatRows:false,insertRows:false,deleteRows:false};
     }
     XLSX.utils.book_append_sheet(newWb,ws,name);
   });
   XLSX.writeFile(newWb, getFilename('.xlsx'));
-  toast('✅ XLSX 已下載'+(pw?' (已加密保護)':''));
+  toast(pw ? T('toast-xlsx-enc') : T('toast-xlsx-ok'));
 }
 
-// ── Download PDF (real redaction + real encryption) ────────
 function canvasToPngBytes(canvas){
   const url = canvas.toDataURL('image/png');
   const b64 = url.split(',')[1];
@@ -1200,12 +1389,72 @@ function canvasToPngBytes(canvas){
   return out;
 }
 
+// ── Download PDF ───────────────────────────────────────────
+// Uses the live canvas pixels (includes auto redact + manual draws + OCR)
 async function downloadPDF(){
   const pw = getPw(); if(pw===false) return;
-  if(!S.pdfBuffer){ toast('❌ PDF 尚未載入'); return; }
-  toast('⏳ 處理中...', 20000);
+
+  // If we have live canvases (from preview), use those directly
+  if(S.pdfCanvases.length > 0){
+    toast(T('toast-pdf-proc'), 20000);
+    try {
+      const { PDFDocument } = PDFLib;
+      const newDoc = await PDFDocument.create();
+
+      for(const pg of S.pdfCanvases){
+        const pngBytes = canvasToPngBytes(pg.canvas);
+        const pngImg   = await newDoc.embedPng(pngBytes);
+        // Use original PDF dimensions
+        const origW = pg.canvas.width  / (pg.canvas.width  / pg.canvas.width);
+        const origH = pg.canvas.height / (pg.canvas.height / pg.canvas.height);
+        const pdfPage = newDoc.addPage([pg.canvas.width, pg.canvas.height]);
+        pdfPage.drawImage(pngImg, {x:0, y:0, width:pg.canvas.width, height:pg.canvas.height});
+      }
+
+      // If more pages than previewed, process remaining
+      if(S.pdfBuffer){
+        const pdfjsPdf = await pdfjsLib.getDocument({data: S.pdfBuffer.slice(0)}).promise;
+        if(pdfjsPdf.numPages > S.pdfCanvases.length){
+          for(let i = S.pdfCanvases.length + 1; i <= pdfjsPdf.numPages; i++){
+            const page   = await pdfjsPdf.getPage(i);
+            const origVp = page.getViewport({scale:1.0});
+            const vp     = page.getViewport({scale:2.0});
+            const canvas = document.createElement('canvas');
+            canvas.width = vp.width; canvas.height = vp.height;
+            const ctx = canvas.getContext('2d');
+            await page.render({canvasContext:ctx, viewport:vp}).promise;
+            const textContent = await page.getTextContent();
+            applyPDFRedact(ctx, textContent.items, vp);
+            const pngBytes = canvasToPngBytes(canvas);
+            const pngImg   = await newDoc.embedPng(pngBytes);
+            const pdfPage  = newDoc.addPage([origVp.width, origVp.height]);
+            pdfPage.drawImage(pngImg, {x:0, y:0, width:origVp.width, height:origVp.height});
+          }
+        }
+      }
+
+      if(pw){
+        await newDoc.encrypt({
+          userPassword: pw, ownerPassword: pw,
+          permissions: { printing:'highResolution', copying:false, modifying:false, annotating:false }
+        });
+      }
+
+      const bytes = await newDoc.save();
+      const blob  = new Blob([bytes], {type:'application/pdf'});
+      const a = document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=getFilename('.pdf'); a.click();
+      toast(pw ? T('toast-pdf-enc') : T('toast-pdf-ok'));
+    } catch(e){
+      toast(T('toast-pdf-err')+e.message);
+      console.error(e);
+    }
+    return;
+  }
+
+  // Fallback: no preview canvases, process from buffer
+  if(!S.pdfBuffer){ toast(T('toast-pdf-no')); return; }
+  toast(T('toast-pdf-proc2'), 20000);
   try {
-    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
     const pdfJs  = await pdfjsLib.getDocument({data: S.pdfBuffer.slice(0)}).promise;
     const { PDFDocument } = PDFLib;
     const newDoc = await PDFDocument.create();
@@ -1220,7 +1469,6 @@ async function downloadPDF(){
       await page.render({canvasContext:ctx, viewport:vp}).promise;
       const textContent = await page.getTextContent();
       applyPDFRedact(ctx, textContent.items, vp);
-
       const pngBytes = canvasToPngBytes(canvas);
       const pngImg   = await newDoc.embedPng(pngBytes);
       const pdfPage  = newDoc.addPage([origVp.width, origVp.height]);
@@ -1233,11 +1481,10 @@ async function downloadPDF(){
         permissions: { printing:'highResolution', copying:false, modifying:false, annotating:false }
       });
     }
-
     const bytes = await newDoc.save();
     const blob  = new Blob([bytes], {type:'application/pdf'});
     const a = document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=getFilename('.pdf'); a.click();
-    toast('✅ PDF 已下載' + (pw ? '（已加密）' : ''));
+    toast(pw ? T('toast-pdf-fb-enc') : T('toast-pdf-fb-ok'));
   } catch(e){
     toast('❌ PDF 處理失敗：'+e.message);
     console.error(e);
@@ -1252,25 +1499,25 @@ function downloadCSV(){
   rows.forEach(row=>lines.push(headers.map(h=>{ const r=maskVal(row[h],ct[h]); return csvEsc(r.masked?r.out:row[h]); }).join(',')));
   const blob=new Blob(['\ufeff'+lines.join('\n')],{type:'text/csv;charset=utf-8;'});
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=getFilename('.csv'); a.click();
-  toast('✅ CSV 已下載');
+  toast(T('toast-csv-ok'));
 }
 function csvEsc(v){ const s=String(v); return s.includes(',')||s.includes('"')||s.includes('\n')?`"${s.replace(/"/g,'""')}"`:s; }
 
-// ── Roadmap modal ─────────────────────────────────────────
+// ── Roadmap modal ──────────────────────────────────────────
 function openRoadmap(){ document.getElementById('modal-bg').classList.add('open'); }
 function closeRoadmap(){ document.getElementById('modal-bg').classList.remove('open'); }
 
-// ── Reset ─────────────────────────────────────────────────
+// ── Reset ──────────────────────────────────────────────────
 function resetAll(){ location.reload(); }
 
-// ── localStorage Templates ────────────────────────────────
+// ── Templates ──────────────────────────────────────────────
 const TPL_KEY = 'qs-templates';
 
 function loadTemplateList(){
   const stored = JSON.parse(localStorage.getItem(TPL_KEY) || '{}');
   const sel = document.getElementById('tpl-select');
   const prev = sel.value;
-  sel.innerHTML = '<option value="">— 選擇範本 —</option>';
+  sel.innerHTML = `<option value="">${T('tpl-select-placeholder')}</option>`;
   Object.keys(stored).sort().forEach(name => {
     const opt = document.createElement('option');
     opt.value = name; opt.textContent = name;
@@ -1281,20 +1528,20 @@ function loadTemplateList(){
 
 function saveTemplate(){
   const name = document.getElementById('tpl-name').value.trim();
-  if(!name){ toast('❌ 請輸入範本名稱'); return; }
+  if(!name){ toast(T('toast-tpl-noname')); return; }
   const stored = JSON.parse(localStorage.getItem(TPL_KEY) || '{}');
   stored[name] = { masked:{...S.masked}, kwList:[...S.kwList], naming:S.naming, profile:S.profile };
   localStorage.setItem(TPL_KEY, JSON.stringify(stored));
   loadTemplateList();
   document.getElementById('tpl-select').value = name;
-  toast(`✅ 範本「${name}」已儲存`);
+  toast(T('toast-tpl-save', name));
 }
 
 function loadTemplate(){
   const name = document.getElementById('tpl-select').value;
-  if(!name){ toast('請先選擇範本'); return; }
+  if(!name){ toast(T('toast-tpl-pick')); return; }
   const stored = JSON.parse(localStorage.getItem(TPL_KEY) || '{}');
-  const tpl = stored[name]; if(!tpl){ toast('❌ 找不到範本'); return; }
+  const tpl = stored[name]; if(!tpl){ toast(T('toast-tpl-notfound')); return; }
   Object.entries(tpl.masked||{}).forEach(([k,v]) => {
     S.masked[k] = v;
     const el = document.getElementById('mt-'+k);
@@ -1304,21 +1551,260 @@ function loadTemplate(){
   renderKwTags();
   if(tpl.naming) setNaming(tpl.naming);
   if(tpl.profile) selectProfile(tpl.profile);
-  toast(`✅ 已載入範本「${name}」`);
+  toast(T('toast-tpl-load', name));
   refreshPreview();
 }
 
 function deleteTemplate(){
   const name = document.getElementById('tpl-select').value;
-  if(!name){ toast('請先選擇要刪除的範本'); return; }
+  if(!name){ toast(T('toast-tpl-pickdel')); return; }
   const stored = JSON.parse(localStorage.getItem(TPL_KEY) || '{}');
   delete stored[name];
   localStorage.setItem(TPL_KEY, JSON.stringify(stored));
   loadTemplateList();
-  toast(`🗑 範本「${name}」已刪除`);
+  toast(T('toast-tpl-del', name));
 }
 
-// ── Init ──────────────────────────────────────────────────
+
+// ══════════════════════════════════════════════════════════════
+// ── i18n ──────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════
+const LANGS = {
+  zh: {
+    'app-title':      '報價遮蔽工具 Pro',
+    'app-sub':        '自動偵測 · 手動框選 · OCR辨識 · 資料不離開本機',
+    'roadmap-btn':    '📋 功能說明',
+    'step1': '上傳檔案', 'step2': '發送對象', 'step3': '遮蔽設定', 'step4': '存檔設定',
+    'card1-title': '上傳報價檔案',
+    'card2-title': '選擇發送對象',
+    'card3-title': '設定遮蔽內容',
+    'card4-title': '存檔設定',
+    'card5-title': '預覽 & 下載',
+    'upload-main': '點擊選擇或拖曳檔案到這裡',
+    'upload-fmt':  '支援 .xlsx · .xls · .pdf 格式',
+    'upload-privacy': '🔒 檔案只在您的瀏覽器中處理，不會上傳到任何伺服器',
+    'p-client-title': '寄給客戶',   'p-client-desc': '隱藏成本、利潤、供應商、內部備註',
+    'p-internal-title': '內部分享', 'p-internal-desc': '隱藏客戶名稱、折扣金額',
+    'p-partner-title': '合作夥伴',  'p-partner-desc': '隱藏客戶名稱、成本結構',
+    'p-custom-title': '自訂',       'p-custom-desc': '手動選擇要遮蔽的欄位',
+    'mt-client-t': '客戶名稱', 'mt-client-s': '公司名、聯絡人',
+    'mt-price-t':  '報價金額', 'mt-price-s':  '單價、總價、折扣',
+    'mt-cost-t':   '成本 / 利潤', 'mt-cost-s': '進價、毛利',
+    'mt-note-t':   '內部備註', 'mt-note-s':   '備註、說明欄',
+    'mt-supplier-t': '供應商', 'mt-supplier-s': '供應商名、料號',
+    'mt-contact-t':  '業務員', 'mt-contact-s':  '姓名、聯絡方式',
+    'kw-ph':   '例：ABC公司、某某工程師...',
+    'kw-add':  '+ 加入',
+    'ocr-title': '啟用 OCR 圖片辨識',
+    'ocr-desc':  '掃描型 PDF / 含圖片的 PDF 也能偵測 — 首次啟用會下載約 20MB 語言包',
+    'tpl-section': '常用設定範本',
+    'tpl-load': '載入', 'tpl-del': '刪除', 'tpl-save': '💾 儲存範本',
+    'tpl-name-ph': '範本名稱（例：客戶版標準設定）',
+    'naming-section': '檔名後綴',
+    'nc-date-t': '加日期', 'nc-masked-t': '加「已遮蔽」',
+    'nc-profile-t': '加對象名稱', 'nc-datetime-t': '加日期時間',
+    'nc-custom-t': '自訂後綴', 'nc-none-t': '不加後綴',
+    'pw-section-title': '開啟密碼',
+    'pw-title': '設定 PDF 開啟密碼',
+    'pw-desc':  'AES 真實加密，收件人需輸入密碼才能開啟',
+    'draw-banner-text': '<strong>手動補遮蔽</strong>：在下方 PDF 預覽圖上<strong>按住滑鼠拖曳</strong>，即可手動畫上黑色遮蔽塊。Logo、印章、漏掉的文字都能補塗。',
+    'btn-dl-xlsx': '⬇ 下載 XLSX',
+    'btn-dl-csv-label': '⬇ 下載 CSV',
+    'btn-undo': '↩ 復原最後一筆',
+    'btn-reset': '↺ 重新開始',
+    'modal-title': '📋 功能說明',
+    // toasts
+    'toast-xlsx-ok': '✅ XLSX 已下載',
+    'toast-xlsx-enc': '✅ XLSX 已下載 (已加密保護)',
+    'toast-pdf-ok': '✅ PDF 已下載（含手動修改）',
+    'toast-pdf-enc': '✅ PDF 已下載（含手動修改）（已加密）',
+    'toast-pdf-fb-ok': '✅ PDF 已下載',
+    'toast-pdf-fb-enc': '✅ PDF 已下載（已加密）',
+    'toast-csv-ok': '✅ CSV 已下載',
+    'toast-pdf-proc': '⏳ 打包中...',
+    'toast-pdf-proc2': '⏳ 處理中...',
+    'toast-pdf-err': '❌ PDF 處理失敗：',
+    'toast-pdf-no': '❌ PDF 尚未載入',
+    'toast-pw-empty': '❌ 請輸入密碼',
+    'toast-pw-mismatch': '❌ 兩次密碼不符',
+    'toast-kw-exists': '',
+    'toast-tpl-save': (n) => `✅ 範本「${n}」已儲存`,
+    'toast-tpl-load': (n) => `✅ 已載入範本「${n}」`,
+    'toast-tpl-del':  (n) => `🗑 範本「${n}」已刪除`,
+    'toast-tpl-noname': '❌ 請輸入範本名稱',
+    'toast-tpl-notfound': '❌ 找不到範本',
+    'toast-tpl-pick': '請先選擇範本',
+    'toast-tpl-pickdel': '請先選擇要刪除的範本',
+    'toast-undo-ok': '✅ 已復原最後一筆',
+    'toast-undo-none': '沒有可以復原的操作',
+    'toast-file-err': '❌ 無法讀取檔案，請確認格式正確',
+    'ocr-status': (i, t) => `OCR 辨識中：第 ${i} / ${t} 頁...`,
+    'draw-hint': '✏️ 拖曳可手動補塗',
+    'preview-label': '預覽（前 50 列）',
+    'pdf-loading': '載入 PDF 中...',
+    'pdf-no-buf': 'PDF 尚未載入',
+    'pdf-no-preview': '無法預覽此 PDF，但仍可下載',
+    'pdf-more': (n, t) => `... 還有 ${n} 頁（僅預覽前 ${t} 頁）`,
+    'pdf-page-label': (i, t) => `第 ${i} 頁 / 共 ${t} 頁`,
+    'fname-waiting': '預覽：等待上傳檔案...',
+    'fname-preview': (s) => `預覽：${s}`,
+    'change-file': '更換檔案',
+    'tpl-select-placeholder': '— 選擇範本 —',
+    'sbadge-rows': (n) => `共 ${n} 列`,
+    'sbadge-cols': (n) => `${n} 欄`,
+    'sbadge-masked': (n) => `🛡 ${n} 處遮蔽`,
+    'sbadge-pdf': (n) => `PDF · ${n} 頁`,
+    'sbadge-auto': (n) => `🛡 自動遮蔽 ${n} 處`,
+    'sbadge-ocr': '🔍 OCR 已啟用',
+    'pw-info': 'PDF 會要求輸入密碼才能開啟；XLSX 會鎖定所有工作表',
+    'btn-dl-pdf': '⬇ 下載 PDF',
+    'btn-dl-xlsx2': '⬇ 下載 XLSX',
+    'rm-done': '✓ 完成', 'rm-wip': '待開發',
+  },
+  en: {
+    'app-title': 'Quote Shield Pro',
+    'app-sub':   'Auto-detect · Manual Redact · OCR · Files stay local',
+    'roadmap-btn': '📋 Features',
+    'step1': 'Upload', 'step2': 'Recipient', 'step3': 'Redact', 'step4': 'Save',
+    'card1-title': 'Upload Quote File',
+    'card2-title': 'Choose Recipient',
+    'card3-title': 'Redaction Settings',
+    'card4-title': 'Save Settings',
+    'card5-title': 'Preview & Download',
+    'upload-main': 'Click to select or drag & drop file here',
+    'upload-fmt':  'Supports .xlsx · .xls · .pdf',
+    'upload-privacy': '🔒 Files are processed locally in your browser and never uploaded',
+    'p-client-title': 'Send to Client',   'p-client-desc': 'Hide cost, margin, suppliers, internal notes',
+    'p-internal-title': 'Internal Share', 'p-internal-desc': 'Hide client name, discount amounts',
+    'p-partner-title': 'Partner',         'p-partner-desc': 'Hide client name, cost structure',
+    'p-custom-title': 'Custom',           'p-custom-desc': 'Manually select fields to redact',
+    'mt-client-t': 'Client Name',    'mt-client-s': 'Company, contact person',
+    'mt-price-t':  'Quote Amount',   'mt-price-s':  'Unit price, total, discount',
+    'mt-cost-t':   'Cost / Margin',  'mt-cost-s':   'Purchase price, profit',
+    'mt-note-t':   'Internal Notes', 'mt-note-s':   'Remarks, descriptions',
+    'mt-supplier-t': 'Supplier',     'mt-supplier-s': 'Supplier name, part no.',
+    'mt-contact-t':  'Sales Rep',    'mt-contact-s':  'Name, contact info',
+    'kw-ph':   'e.g. Acme Corp, John Smith...',
+    'kw-add':  '+ Add',
+    'ocr-title': 'Enable OCR Image Recognition',
+    'ocr-desc':  'Detects text in scanned PDFs / image-based PDFs — first use downloads ~20MB language pack',
+    'tpl-section': 'Saved Templates',
+    'tpl-load': 'Load', 'tpl-del': 'Delete', 'tpl-save': '💾 Save Template',
+    'tpl-name-ph': 'Template name (e.g. Standard Client)',
+    'naming-section': 'Filename Suffix',
+    'nc-date-t': 'Add Date', 'nc-masked-t': 'Add "redacted"',
+    'nc-profile-t': 'Add Recipient', 'nc-datetime-t': 'Add Date & Time',
+    'nc-custom-t': 'Custom Suffix', 'nc-none-t': 'No Suffix',
+    'pw-section-title': 'Password Protection',
+    'pw-title': 'Set PDF Open Password',
+    'pw-desc':  'AES encryption — recipient must enter password to open',
+    'draw-banner-text': '<strong>Manual Redact</strong>: <strong>Click and drag</strong> on the PDF preview below to paint black redaction blocks over logos, stamps, or any missed text.',
+    'btn-dl-xlsx': '⬇ Download XLSX',
+    'btn-dl-csv-label': '⬇ Download CSV',
+    'btn-undo': '↩ Undo Last Draw',
+    'btn-reset': '↺ Start Over',
+    'modal-title': '📋 Features',
+    // toasts
+    'toast-xlsx-ok': '✅ XLSX downloaded',
+    'toast-xlsx-enc': '✅ XLSX downloaded (password protected)',
+    'toast-pdf-ok': '✅ PDF downloaded (with manual edits)',
+    'toast-pdf-enc': '✅ PDF downloaded (with manual edits, encrypted)',
+    'toast-pdf-fb-ok': '✅ PDF downloaded',
+    'toast-pdf-fb-enc': '✅ PDF downloaded (encrypted)',
+    'toast-csv-ok': '✅ CSV downloaded',
+    'toast-pdf-proc': '⏳ Packing PDF...',
+    'toast-pdf-proc2': '⏳ Processing...',
+    'toast-pdf-err': '❌ PDF processing failed: ',
+    'toast-pdf-no': '❌ PDF not loaded yet',
+    'toast-pw-empty': '❌ Please enter a password',
+    'toast-pw-mismatch': '❌ Passwords do not match',
+    'toast-kw-exists': '',
+    'toast-tpl-save': (n) => `✅ Template "${n}" saved`,
+    'toast-tpl-load': (n) => `✅ Template "${n}" loaded`,
+    'toast-tpl-del':  (n) => `🗑 Template "${n}" deleted`,
+    'toast-tpl-noname': '❌ Please enter a template name',
+    'toast-tpl-notfound': '❌ Template not found',
+    'toast-tpl-pick': 'Please select a template',
+    'toast-tpl-pickdel': 'Please select a template to delete',
+    'toast-undo-ok': '✅ Last draw undone',
+    'toast-undo-none': 'Nothing to undo',
+    'toast-file-err': '❌ Cannot read file — please check the format',
+    'ocr-status': (i, t) => `OCR scanning: page ${i} / ${t}...`,
+    'draw-hint': '✏️ Drag to redact manually',
+    'preview-label': 'Preview (first 50 rows)',
+    'pdf-loading': 'Loading PDF...',
+    'pdf-no-buf': 'PDF not loaded',
+    'pdf-no-preview': 'Cannot preview this PDF, but you can still download',
+    'pdf-more': (n, t) => `... ${n} more page(s) (previewing first ${t})`,
+    'pdf-page-label': (i, t) => `Page ${i} / ${t}`,
+    'fname-waiting': 'Preview: waiting for file...',
+    'fname-preview': (s) => `Preview: ${s}`,
+    'change-file': 'Change file',
+    'tpl-select-placeholder': '— Select template —',
+    'sbadge-rows': (n) => `${n} rows`,
+    'sbadge-cols': (n) => `${n} columns`,
+    'sbadge-masked': (n) => `🛡 ${n} redacted`,
+    'sbadge-pdf': (n) => `PDF · ${n} pages`,
+    'sbadge-auto': (n) => `🛡 Auto-redacted ${n}`,
+    'sbadge-ocr': '🔍 OCR enabled',
+    'pw-info': 'The PDF will require a password to open',
+    'btn-dl-pdf': '⬇ Download PDF',
+    'btn-dl-xlsx2': '⬇ Download XLSX',
+    'rm-done': '✓ Done', 'rm-wip': 'Planned',
+  }
+};
+
+// ── Auto-detect then allow manual override ─────────────────
+let currentLang = (navigator.language || 'zh').toLowerCase().startsWith('zh') ? 'zh' : 'en';
+
+function T(key, ...args){
+  const val = LANGS[currentLang][key] ?? LANGS['zh'][key] ?? key;
+  return typeof val === 'function' ? val(...args) : val;
+}
+
+function applyLang(){
+  // data-i18n text nodes
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    const key = el.getAttribute('data-i18n');
+    const val = LANGS[currentLang][key];
+    if(val !== undefined) el.innerHTML = typeof val === 'function' ? val() : val;
+  });
+  // data-i18n-ph placeholders
+  document.querySelectorAll('[data-i18n-ph]').forEach(el => {
+    const key = el.getAttribute('data-i18n-ph');
+    const val = LANGS[currentLang][key];
+    if(val) el.placeholder = val;
+  });
+  // Special IDs
+  document.getElementById('t-app-title').textContent = T('app-title');
+  document.getElementById('t-app-sub').textContent   = T('app-sub');
+  document.getElementById('t-roadmap-btn').textContent = T('roadmap-btn');
+  document.getElementById('lang-btn').textContent    = currentLang === 'zh' ? 'EN' : '中文';
+  // tpl-select placeholder
+  const sel = document.getElementById('tpl-select');
+  if(sel && sel.options[0]) sel.options[0].text = T('tpl-select-placeholder');
+  // pw-desc
+  const pwDescEl = document.querySelector('#pw-section .pw-toggle-row span');
+  if(pwDescEl) pwDescEl.textContent = T('pw-desc');
+  // naming examples stay in local lang naturally; update preview label
+  document.getElementById('preview-label').textContent = T('preview-label');
+  // html lang attr
+  document.documentElement.lang = currentLang === 'zh' ? 'zh-TW' : 'en';
+}
+
+function toggleLang(){
+  currentLang = currentLang === 'zh' ? 'en' : 'zh';
+  applyLang();
+}
+
+// ── Override toast/UI calls to use T() ────────────────────
+// Patch toast-producing functions to use T()
+const _origToast = toast;
+
+// ── Init lang on load ─────────────────────────────────────
+document.addEventListener('DOMContentLoaded', applyLang);
+
+// ── Init ───────────────────────────────────────────────────
 setNaming('date');
 loadTemplateList();
 </script>
