@@ -9,6 +9,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@cantoo/pdf-lib/dist/pdf-lib.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<script src="https://unpkg.com/compromise@14.14.0/builds/compromise.min.js"></script>
 
 <style>
 /* ── Reset & Tokens ──────────────────────────────────────────── */
@@ -453,6 +454,35 @@ table.ptable tr:hover td { background: var(--bg); }
   .step-item span:not(.step-num) { display: none; }
 }
 .hidden { display: none !important; }
+
+/* ── OCR lang row ──────────────────────────────────────────── */
+.ocr-lang-row {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 8px 14px; background: var(--amber-lt); border: 1px solid #E0C070;
+  border-radius: var(--r); margin-top: 6px; font-size: 12px;
+}
+.lang-chk { display: flex; align-items: center; gap: 4px; cursor: pointer; font-size: 12px; }
+.lang-chk input { accent-color: var(--amber); }
+
+/* ── AI Scan row ───────────────────────────────────────────── */
+.ai-scan-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 14px; border: 1px solid var(--border);
+  border-radius: var(--r); background: var(--bg); margin-top: 8px;
+  transition: all .2s;
+}
+.ai-scan-row:hover { border-color: var(--accent); }
+.ai-scan-result {
+  padding: 10px 14px; background: var(--blue-lt); border: 1px solid #BBCFE8;
+  border-radius: var(--r); font-size: 12px; margin-top: 6px; line-height: 1.7;
+}
+.ai-kwtag {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: var(--blue-lt); border: 1px solid #BBCFE8;
+  color: var(--blue); padding: 2px 8px; border-radius: 20px;
+  font-size: 11px; font-family: var(--mono); cursor: pointer; margin: 2px;
+}
+.ai-kwtag:hover { background: var(--blue); color: #fff; }
 </style>
 </head>
 <body>
@@ -579,6 +609,42 @@ table.ptable tr:hover td { background: var(--bg); }
     <div>
       <strong data-i18n="ocr-title">啟用 OCR 圖片辨識</strong>
       <span data-i18n="ocr-desc">掃描型 PDF / 含圖片的 PDF 也能偵測 — 首次啟用會下載約 20MB 語言包</span>
+    </div>
+  </div>
+
+  <!-- OCR 語言選擇 -->
+  <div class="ocr-lang-row hidden" id="ocr-lang-row">
+    <span style="font-size:11px;color:var(--muted);font-weight:600;">OCR 辨識語言：</span>
+    <label class="lang-chk"><input type="checkbox" id="ocr-zh" checked> 繁中</label>
+    <label class="lang-chk"><input type="checkbox" id="ocr-zhcn"> 簡中</label>
+    <label class="lang-chk"><input type="checkbox" id="ocr-en" checked> English</label>
+    <label class="lang-chk"><input type="checkbox" id="ocr-ja"> 日本語</label>
+    <span style="margin-left:8px;font-size:11px;color:var(--muted);">│</span>
+    <span style="font-size:11px;color:var(--muted);margin-left:8px;">信心值門檻：</span>
+    <input type="range" id="ocr-conf" min="0" max="90" value="40" style="width:80px;accent-color:var(--accent);">
+    <span id="ocr-conf-val" style="font-size:11px;font-family:var(--mono);color:var(--accent);min-width:28px;">40%</span>
+  </div>
+
+  <!-- ML 智慧掃描 -->
+  <div class="ai-scan-row" id="ai-scan-row">
+    <div style="display:flex;align-items:center;gap:10px;flex:1;">
+      <span style="font-size:20px;">🧠</span>
+      <div>
+        <strong>本地 ML 語意掃描</strong>
+        <span style="font-size:11px;color:var(--muted);display:block;">用 Transformer 語意向量比對敏感類型，不靠關鍵字、完全離線。首次需下載 ~45MB 模型</span>
+      </div>
+    </div>
+    <button class="btn-sm" id="ai-scan-btn" onclick="runMLScan()">🧠 ML 掃描</button>
+  </div>
+  <div id="ai-scan-result" class="ai-scan-result hidden"></div>
+
+  <!-- NER 實體辨識 -->
+  <div class="ocr-row" id="ner-toggle-row" onclick="toggleNER()" style="margin-top:8px;">
+    <input type="checkbox" id="ner-chk">
+    <span class="ocr-ico">🧠</span>
+    <div>
+      <strong>NER 命名實體辨識</strong>
+      <span style="font-size:11px;color:var(--muted);display:block;">自動偵測英文人名、組織名、地址並加入遮蔽</span>
     </div>
   </div>
 
@@ -722,11 +788,23 @@ table.ptable tr:hover td { background: var(--bg); }
     </div>
     <div class="rm-item">
       <span class="rm-badge wip">✓ 完成</span>
-      <div><p>✏️ 手動框選塗黑（NEW）</p><span>在 PDF 預覽上直接用滑鼠拖曳，手動補塗 Logo、印章、漏掉的文字</span></div>
+      <div><p>✏️ 手動框選塗黑</p><span>在 PDF 預覽上直接用滑鼠拖曳，手動補塗 Logo、印章、漏掉的文字</span></div>
     </div>
     <div class="rm-item">
       <span class="rm-badge wip">✓ 完成</span>
-      <div><p>🔍 OCR 圖片辨識（NEW）</p><span>掃描型 PDF 或含圖片的 PDF，用 Tesseract 辨識後自動遮蔽敏感資訊</span></div>
+      <div><p>🔍 OCR 多語言辨識（升級）</p><span>繁中/簡中/英文/日文四語言，信心值門檻過濾低品質結果，減少誤判</span></div>
+    </div>
+    <div class="rm-item">
+      <span class="rm-badge wip">✓ 完成</span>
+      <div><p>🧠 本地 ML 語意掃描（Transformer）</p><span>用 paraphrase-multilingual-MiniLM（HuggingFace）做語意向量比對，自動分類欄位與內容，完全離線、不靠關鍵字</span></div>
+    </div>
+    <div class="rm-item">
+      <span class="rm-badge wip">✓ 完成</span>
+      <div><p>🧠 NER 命名實體辨識</p><span>用 compromise.js 偵測英文人名、組織名、地址，自動加入遮蔽清單</span></div>
+    </div>
+    <div class="rm-item">
+      <span class="rm-badge wip">✓ 完成</span>
+      <div><p>📋 強化正則引擎（12+ 規則）</p><span>身分證、統編、護照、銀行帳號、信用卡、台灣地址、IP、URL、國際電話、多幣別金額</span></div>
     </div>
     <div class="rm-item">
       <span class="rm-badge wip">✓ 完成</span>
@@ -757,13 +835,52 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs
 
 // ── Constants ────────────────────────────────────────────
 const MASK_KW = {
-  client:   ['客戶','公司','客户','client','company','聯絡','聯絡人','contact','買方','甲方'],
-  price:    ['報價','單價','金額','售價','折扣','price','amount','total','總價','合計','小計','subtotal','discount','定價','報價金額'],
-  cost:     ['成本','進價','利潤','毛利','利差','cost','profit','margin','成本價','進貨','底價'],
-  note:     ['備註','說明','內部','note','remark','comment','注意','附記'],
-  supplier: ['供應商','廠商','料號','supplier','vendor','sku','part','原廠','品牌'],
-  contact:  ['業務','負責人','電話','信箱','手機','email','tel','phone','sales','業代'],
+  client:   ['客戶','公司','客户','client','company','聯絡','聯絡人','contact','買方','甲方','乙方','corp','ltd','inc','co.','企業','集團','機構','單位','organization','org'],
+  price:    ['報價','單價','金額','售價','折扣','price','amount','total','總價','合計','小計','subtotal','discount','定價','報價金額','含稅','未稅','稅額','tax','unit price','list price','quoted','quote'],
+  cost:     ['成本','進價','利潤','毛利','利差','cost','profit','margin','成本價','進貨','底價','purchase','采購','採購','markup','gross','net cost'],
+  note:     ['備註','說明','內部','note','remark','comment','注意','附記','internal','memo','remarks','description','desc','附件','attachment'],
+  supplier: ['供應商','廠商','料號','supplier','vendor','sku','part','原廠','品牌','manufacturer','mfr','oem','distributor','製造','廠牌','品號','part no','item no'],
+  contact:  ['業務','負責人','電話','信箱','手機','email','tel','phone','sales','業代','rep','contact person','聯絡人','業務員','承辦','mobile','fax','傳真'],
 };
+
+// ── Enhanced Regex Patterns ────────────────────────────────
+const PATTERNS = {
+  // 台灣手機 / 市話
+  twPhone:    /09\d{2}[-.\s]?\d{3}[-.\s]?\d{3}|0[2-8]\d[-.\s]?\d{3,4}[-.\s]?\d{4}/g,
+  // 國際電話
+  intlPhone:  /\+\d{1,3}[-.\s]?\(?\d{1,4}\)?[-.\s]?\d{2,4}[-.\s]?\d{2,4}[-.\s]?\d{0,4}/g,
+  // Email
+  email:      /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g,
+  // 台灣身分證字號
+  twId:       /[A-Z][12]\d{8}/g,
+  // 統一編號
+  twBizId:    /\b\d{8}\b/g,
+  // 護照號碼
+  passport:   /[A-Z]{1,2}\d{7,9}/g,
+  // 銀行帳號（12-16位數）
+  bankAcct:   /\b\d{12,16}\b/g,
+  // 信用卡
+  creditCard: /\b(?:\d{4}[-\s]?){3}\d{4}\b/g,
+  // 金額（多幣別）
+  amount:     /(?:NT\$|USD|NTD|TWD|CNY|JPY|EUR|GBP|HKD|\$|¥|€|£)[\s]?[\d,]+(?:\.\d+)?|\b\d{1,3}(?:,\d{3})+(?:\.\d+)?\b|\b\d{4,}(?:\.\d{1,2})?\b/g,
+  // 台灣地址
+  twAddress:  /(?:台灣|臺灣)?(?:[台臺]北|新北|桃園|台中|臺中|台南|臺南|高雄|基隆|新竹|苗栗|彰化|南投|雲林|嘉義|屏東|宜蘭|花蓮|台東|臺東|澎湖|金門|連江)[市縣]?[^\n，,]{0,30}(?:路|街|道|巷|弄|號)/g,
+  // IP 位址
+  ipAddr:     /\b(?:\d{1,3}\.){3}\d{1,3}\b/g,
+  // URL
+  url:        /https?:\/\/[^\s"'<>]+/g,
+  // 日期（各格式）
+  date:       /\b(?:\d{4}[\/\-\.]\d{1,2}[\/\-\.]\d{1,2}|\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}|民國\s?\d{2,3}\s?年\s?\d{1,2}\s?月\s?\d{1,2}\s?日)\b/g,
+};
+
+// Sensitive pattern types (which ones to auto-mask per category)
+const PATTERN_MASK_MAP = {
+  contact: ['twPhone','intlPhone','email'],
+  client:  ['twId','twBizId','twAddress'],
+  price:   ['amount','creditCard','bankAcct'],
+  note:    ['url','ipAddr'],
+};
+
 const PROFILE_CFG = {
   client:   { client:false, price:false, cost:true,  note:true,  supplier:true,  contact:false },
   internal: { client:true,  price:true,  cost:false, note:false, supplier:false, contact:false },
@@ -788,9 +905,11 @@ const S = {
   masked: { client:true, price:true, cost:true, note:true, supplier:false, contact:false },
   kwList: [], profile: null, view: 'masked', naming: 'date', pwEnabled: false,
   pdfBuffer: null,
-  // PDF canvas tracking for manual draw + undo
-  pdfCanvases: [],     // [{canvas, ctx, savedStates:[]}]
+  pdfCanvases: [],
   useOCR: false,
+  useNER: false,
+  nerEntities: [],   // discovered by NER
+  aiKwList: [],      // discovered by AI scan
 };
 
 // ── Toast ──────────────────────────────────────────────────
@@ -906,8 +1025,31 @@ function toggleOCR(){
   chk.checked = !chk.checked;
   S.useOCR = chk.checked;
   document.getElementById('ocr-toggle-row').classList.toggle('on', S.useOCR);
+  document.getElementById('ocr-lang-row').classList.toggle('hidden', !S.useOCR);
   if(S.fileType==='pdf') renderPDFPreview();
 }
+
+function getOCRLangs(){
+  const langs = [];
+  if(document.getElementById('ocr-zh')?.checked)   langs.push('chi_tra');
+  if(document.getElementById('ocr-zhcn')?.checked)  langs.push('chi_sim');
+  if(document.getElementById('ocr-en')?.checked)    langs.push('eng');
+  if(document.getElementById('ocr-ja')?.checked)    langs.push('jpn');
+  return langs.length ? langs.join('+') : 'chi_tra+eng';
+}
+
+function getOCRConfidence(){
+  return parseInt(document.getElementById('ocr-conf')?.value || '40');
+}
+
+// Update conf label on slider change
+document.addEventListener('DOMContentLoaded', () => {
+  const slider = document.getElementById('ocr-conf');
+  const label  = document.getElementById('ocr-conf-val');
+  if(slider && label){
+    slider.addEventListener('input', () => { label.textContent = slider.value + '%'; });
+  }
+});
 
 // ── Profile ────────────────────────────────────────────────
 function selectProfile(key){
@@ -978,9 +1120,342 @@ function onPwInput(){
   bar.style.background = w<40?'#E24B4A':w<70?'#BA7517':'#2A6E46';
 }
 
-// ── Core mask logic ────────────────────────────────────────
-function AMOUNT_RE(){ return /(\$|NT\$|USD|NTD|¥|€)[\s]?[\d,]+(\.\d+)?|\b\d{1,3}(,\d{3})+(\.\d+)?\b/g; }
+// ── ML Pattern Engine ──────────────────────────────────────
+function AMOUNT_RE(){ return new RegExp(PATTERNS.amount.source, 'g'); }
 
+// Apply all enabled pattern rules to a string, return {out, masked, types[]}
+function applyPatterns(s){
+  let result = s, didMask = false, types = [];
+
+  // Helper: replace with pattern, only if corresponding mask category is ON
+  function tryReplace(patKey, catKey, label){
+    if(!S.masked[catKey]) return;
+    const re = new RegExp(PATTERNS[patKey].source, 'g');
+    const replaced = result.replace(re, m => { types.push(catKey); return `【${label}】`; });
+    if(replaced !== result){ result = replaced; didMask = true; }
+  }
+
+  tryReplace('twPhone',    'contact', '電話遮蔽');
+  tryReplace('intlPhone',  'contact', '電話遮蔽');
+  tryReplace('email',      'contact', '信箱遮蔽');
+  tryReplace('twId',       'client',  '身分證遮蔽');
+  tryReplace('twBizId',    'client',  '統編遮蔽');
+  tryReplace('passport',   'client',  '護照遮蔽');
+  tryReplace('creditCard', 'price',   '卡號遮蔽');
+  tryReplace('bankAcct',   'price',   '帳號遮蔽');
+  tryReplace('twAddress',  'client',  '地址遮蔽');
+  tryReplace('ipAddr',     'note',    'IP遮蔽');
+  tryReplace('url',        'note',    'URL遮蔽');
+
+  if(S.masked.price || S.masked.cost){
+    const re = AMOUNT_RE();
+    const replaced = result.replace(re, m => { types.push('price'); return '【金額遮蔽】'; });
+    if(replaced !== result){ result = replaced; didMask = true; }
+  }
+
+  return {out: result, masked: didMask, types};
+}
+
+// NER: run compromise on text, return found entities
+function nerScan(text){
+  if(!window.nlp || !S.useNER) return [];
+  try {
+    const doc = nlp(text);
+    const found = [];
+    doc.people().out('array').forEach(e => { if(e.length > 1) found.push(e); });
+    doc.organizations().out('array').forEach(e => { if(e.length > 1) found.push(e); });
+    doc.places().out('array').forEach(e => { if(e.length > 1) found.push(e); });
+    return [...new Set(found)];
+  } catch(e){ return []; }
+}
+
+// ══════════════════════════════════════════════════════════════
+// 🧠 LOCAL ML ENGINE — @xenova/transformers (瀏覽器端，完全離線)
+// ══════════════════════════════════════════════════════════════
+
+// Dynamic ESM import of transformers (loads from CDN, cached in browser)
+let _mlPipeline = null;      // zero-shot classification pipeline
+let _embedder   = null;      // feature-extraction pipeline
+let _mlReady    = false;
+let _mlLoading  = false;
+
+// Label sets for zero-shot classification
+const ZS_LABELS = {
+  client:   ['客戶名稱', '公司名稱', '聯絡人姓名', 'client name', 'company name', 'contact person'],
+  price:    ['報價金額', '售價', '折扣', 'price', 'quote amount', 'discount', 'unit price'],
+  cost:     ['成本', '進貨價', '毛利', 'cost', 'purchase price', 'profit margin'],
+  note:     ['內部備註', '說明', 'internal note', 'remark', 'comment'],
+  supplier: ['供應商名稱', '廠商', '料號', 'supplier', 'vendor', 'part number'],
+  contact:  ['業務員', '負責人', '電話', '信箱', 'sales rep', 'phone', 'email'],
+};
+
+// Sentence embeddings for each sensitive category (used for cosine-sim approach)
+// These are human-readable anchors; we embed them at load time
+const EMBED_ANCHORS = {
+  client:   ['This is a customer or client name', '這是客戶公司名稱或聯絡人姓名'],
+  price:    ['This is a price, amount, or monetary value', '這是報價金額或售價數字'],
+  cost:     ['This is cost, purchase price, or profit margin', '這是成本進價或毛利資訊'],
+  note:     ['This is an internal note or private remark', '這是內部備註或說明文字'],
+  supplier: ['This is a supplier or vendor name', '這是供應商廠商名稱'],
+  contact:  ['This is contact information like phone or email', '這是電話信箱等聯絡資訊'],
+};
+
+let _anchorEmbeds = {};   // { client: Float32Array, price: ... }
+
+async function loadMLModels(onProgress){
+  if(_mlReady || _mlLoading) return;
+  _mlLoading = true;
+  try {
+    onProgress?.('📦 載入 Transformers.js 核心...');
+    const { pipeline, env } = await import('https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2/dist/transformers.min.js');
+
+    // Use WASM backend, allow remote model CDN
+    env.allowRemoteModels = true;
+    env.useBrowserCache   = true;
+
+    onProgress?.('🔽 下載語意嵌入模型（首次約 30MB，之後快取）...');
+    // multilingual-e5-small: 117MB → use a smaller one
+    // Use paraphrase-multilingual-MiniLM-L12-v2 quantized (~45MB)
+    _embedder = await pipeline(
+      'feature-extraction',
+      'Xenova/paraphrase-multilingual-MiniLM-L12-v2',
+      { progress_callback: p => {
+          if(p.status === 'progress')
+            onProgress?.(`🔽 下載模型... ${Math.round(p.progress||0)}%`);
+        }
+      }
+    );
+
+    onProgress?.('🧮 預計算敏感類型錨點向量...');
+    // Pre-embed anchor sentences for each category
+    for(const [cat, anchors] of Object.entries(EMBED_ANCHORS)){
+      const vecs = [];
+      for(const a of anchors){
+        const out = await _embedder(a, { pooling:'mean', normalize:true });
+        vecs.push(Array.from(out.data));
+      }
+      // Average anchor vectors
+      const dim = vecs[0].length;
+      const avg = new Float32Array(dim);
+      vecs.forEach(v => v.forEach((x,i) => avg[i] += x));
+      avg.forEach((_,i) => avg[i] /= vecs.length);
+      _anchorEmbeds[cat] = avg;
+    }
+
+    _mlReady = true;
+    onProgress?.('✅ ML 模型就緒！');
+  } catch(e){
+    _mlLoading = false;
+    throw e;
+  }
+}
+
+function cosineSim(a, b){
+  let dot = 0, na = 0, nb = 0;
+  for(let i = 0; i < a.length; i++){ dot += a[i]*b[i]; na += a[i]*a[i]; nb += b[i]*b[i]; }
+  return dot / (Math.sqrt(na) * Math.sqrt(nb) + 1e-8);
+}
+
+// Score a text string against all sensitive categories
+// Returns { category: score, ... } sorted by score desc
+async function mlScoreText(text){
+  if(!_mlReady || !_embedder) return null;
+  try {
+    const out  = await _embedder(text, { pooling:'mean', normalize:true });
+    const vec  = new Float32Array(out.data);
+    const scores = {};
+    for(const [cat, anchor] of Object.entries(_anchorEmbeds)){
+      scores[cat] = cosineSim(vec, anchor);
+    }
+    return scores;
+  } catch(e){ return null; }
+}
+
+// ML scan: score every unique cell value / header, flag high-similarity ones
+async function runMLScan(){
+  const btn = document.getElementById('ai-scan-btn');
+  const res = document.getElementById('ai-scan-result');
+  btn.disabled = true;
+  res.classList.remove('hidden');
+
+  // 1. Load models if not yet loaded
+  if(!_mlReady){
+    btn.textContent = '⏳ 載入模型...';
+    res.innerHTML = '<div style="color:var(--muted);">⏳ 首次使用需下載模型（約 45MB），請稍候...</div><div id="ml-prog" style="font-size:11px;color:var(--blue);margin-top:6px;"></div>';
+    try {
+      await loadMLModels(msg => {
+        const el = document.getElementById('ml-prog');
+        if(el) el.textContent = msg;
+      });
+    } catch(e){
+      res.innerHTML = `<span style="color:var(--accent);">❌ 模型載入失敗：${e.message}<br><small>請確認網路連線，模型只需下載一次後會快取。</small></span>`;
+      btn.disabled = false; btn.textContent = '🧠 ML 掃描';
+      return;
+    }
+  }
+
+  btn.textContent = '🔍 分析中...';
+  res.innerHTML = '<div style="color:var(--muted);">🧮 ML 語意分析中，逐欄評分...</div>';
+
+  const threshold = 0.45;   // cosine similarity threshold to flag as sensitive
+  const findings  = [];     // { text, category, score }
+  const colFlags  = {};     // { colName: {category, score} }
+
+  try {
+    if(S.fileType === 'xlsx'){
+
+      // ── A. Score column headers (fast: usually <20 headers)
+      for(const [sheet, headers] of Object.entries(S.headers)){
+        for(const h of headers){
+          if(!h || String(h).length < 2) continue;
+          const scores = await mlScoreText(String(h));
+          if(!scores) continue;
+          const best = Object.entries(scores).sort((a,b)=>b[1]-a[1])[0];
+          if(best[1] >= threshold && !S.masked[best[0]]){
+            colFlags[h] = { category: best[0], score: best[1] };
+          }
+        }
+      }
+
+      // ── B. Score sampled cell values (up to 80 unique values)
+      const seen = new Set();
+      outer: for(const [sheet, rows] of Object.entries(S.sheets)){
+        const headers = S.headers[sheet] || [];
+        for(const row of rows){
+          for(const h of headers){
+            const v = String(row[h] ?? '').trim();
+            if(!v || v.length < 3 || /^\d+$/.test(v) || seen.has(v)) continue;
+            seen.add(v);
+            const scores = await mlScoreText(v);
+            if(!scores) continue;
+            const best = Object.entries(scores).sort((a,b)=>b[1]-a[1])[0];
+            if(best[1] >= threshold + 0.05){  // slightly higher bar for values
+              findings.push({ text: v.slice(0,30), category: best[0], score: best[1] });
+            }
+            if(seen.size >= 80) break outer;
+          }
+        }
+      }
+
+    } else if(S.fileType === 'pdf' && S.pdfBuffer){
+
+      // ── C. PDF: extract text layer and score lines
+      const pdfjsPdf = await pdfjsLib.getDocument({ data: S.pdfBuffer.slice(0) }).promise;
+      const seen = new Set();
+      for(let p = 1; p <= Math.min(pdfjsPdf.numPages, 10); p++){
+        const page = await pdfjsPdf.getPage(p);
+        const tc   = await page.getTextContent();
+        for(const item of tc.items){
+          const v = (item.str || '').trim();
+          if(!v || v.length < 3 || seen.has(v)) continue;
+          seen.add(v);
+          const scores = await mlScoreText(v);
+          if(!scores) continue;
+          const best = Object.entries(scores).sort((a,b)=>b[1]-a[1])[0];
+          if(best[1] >= threshold + 0.05){
+            findings.push({ text: v.slice(0,30), category: best[0], score: best[1] });
+          }
+          if(seen.size >= 100) break;
+        }
+      }
+    }
+
+    // ── Build result UI ──────────────────────────────────────
+    const catLabel = { client:'客戶', price:'金額', cost:'成本', note:'備註', supplier:'供應商', contact:'聯絡' };
+    const catColor = { client:'var(--accent)', price:'var(--green)', cost:'var(--amber)', note:'var(--blue)', supplier:'var(--muted)', contact:'var(--accent-dk)' };
+
+    // Auto-enable flagged categories
+    const autoEnabled = [];
+    Object.entries(colFlags).forEach(([col, {category, score}]) => {
+      if(!S.masked[category]){
+        S.masked[category] = true;
+        const el = document.getElementById('mt-'+category);
+        if(el){ el.classList.add('on'); el.querySelector('input').checked = true; }
+        autoEnabled.push(catLabel[category]);
+      }
+    });
+
+    // Render findings
+    const colHtml = Object.entries(colFlags).map(([col, {category, score}]) =>
+      `<div style="display:flex;align-items:center;gap:8px;margin:3px 0;">
+        <span style="font-family:var(--mono);font-size:11px;background:var(--surface2);padding:2px 7px;border-radius:4px;">${col}</span>
+        <span style="font-size:10px;color:${catColor[category]};font-weight:700;">→ ${catLabel[category]}</span>
+        <span style="font-size:10px;color:var(--muted);">${(score*100).toFixed(0)}%</span>
+      </div>`
+    ).join('');
+
+    const valHtml = findings.slice(0,12).map(({text, category, score}) =>
+      `<span class="ai-kwtag" style="border-color:${catColor[category]}20;color:${catColor[category]};"
+        title="${catLabel[category]} · ${(score*100).toFixed(0)}% 相似度"
+        onclick="addKwFromAI('${text.replace(/'/g,"\\'")}')">
+        ＋${text} <small style="opacity:.6;">${(score*100).toFixed(0)}%</small>
+       </span>`
+    ).join('');
+
+    const summaryLine = autoEnabled.length
+      ? `✅ 已自動啟用類別：${[...new Set(autoEnabled)].join('、')}`
+      : '所有建議類別已啟用';
+
+    res.innerHTML = `
+      <div style="font-weight:700;margin-bottom:8px;">🧠 本地 ML 語意分析結果</div>
+      <div style="font-size:11px;color:var(--green);margin-bottom:10px;">${summaryLine}</div>
+      ${colHtml ? `<div style="margin-bottom:10px;"><div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px;">📊 欄位分類結果</div>${colHtml}</div>` : ''}
+      ${valHtml ? `<div><div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px;">🔍 高風險值（點擊加入關鍵字）</div><div style="display:flex;flex-wrap:wrap;gap:4px;">${valHtml}</div></div>` : '<div style="color:var(--muted);font-size:12px;">未發現額外高風險值</div>'}
+    `;
+
+    refreshPreview();
+    toast('🧠 ML 語意掃描完成！');
+
+  } catch(e){
+    res.innerHTML = `<span style="color:var(--accent);">❌ ML 掃描失敗：${e.message}</span>`;
+    console.error(e);
+  }
+
+  btn.disabled = false; btn.textContent = '🧠 ML 掃描';
+}
+
+function addKwFromAI(kw){
+  if(!S.kwList.includes(kw)){ S.kwList.push(kw); renderKwTags(); refreshPreview(); }
+  toast(`✅ 已加入：${kw}`);
+}
+
+// ── ML-enhanced contentMask for OCR output ─────────────────
+// Used after OCR: if confidence is borderline, use ML to double-check
+async function mlCheckOCRWord(text, confidence){
+  if(!_mlReady || confidence > 70) return confidence > 40; // high conf: use threshold only
+  // Low confidence OCR result: run ML scoring
+  const scores = await mlScoreText(text);
+  if(!scores) return false;
+  const best = Object.entries(scores).sort((a,b)=>b[1]-a[1])[0];
+  // Only mask if (a) this category is enabled AND (b) similarity is high
+  return S.masked[best[0]] && best[1] > 0.5;
+}
+
+// ── NER Toggle ─────────────────────────────────────────────
+function toggleNER(){
+  const chk = document.getElementById('ner-chk');
+  chk.checked = !chk.checked;
+  S.useNER = chk.checked;
+  document.getElementById('ner-toggle-row').classList.toggle('on', S.useNER);
+  if(S.useNER){
+    // Run NER on current content and collect entities
+    let allText = '';
+    Object.entries(S.sheets).forEach(([,rows]) => {
+      rows.forEach(row => { Object.values(row).forEach(v => { allText += ' ' + String(v); }); });
+    });
+    S.nerEntities = nerScan(allText);
+    if(S.nerEntities.length){
+      S.nerEntities.forEach(e => { if(!S.kwList.includes(e)) S.kwList.push(e); });
+      renderKwTags();
+      refreshPreview();
+      toast(`🧠 NER 發現 ${S.nerEntities.length} 個實體，已加入遮蔽清單`);
+    } else {
+      toast('🧠 NER 未發現額外實體（英文內容較少）');
+    }
+  }
+}
+
+// ── Core mask logic ────────────────────────────────────────
 function headerType(h){
   const lo=String(h).toLowerCase();
   for(const [type,kws] of Object.entries(MASK_KW)){
@@ -995,7 +1470,9 @@ function contentMask(val){
   const s = String(val);
   let result = s, didMask = false;
 
+  // 1. Custom keywords (manual + AI + NER)
   for(const kw of S.kwList){
+    if(!kw) continue;
     const esc = kw.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
     if(new RegExp(esc,'i').test(result)){
       result = result.replace(new RegExp(esc,'gi'), '【***】');
@@ -1003,23 +1480,11 @@ function contentMask(val){
     }
   }
 
-  if(S.masked.contact){
-    const r1 = result.replace(/09\d{2}[-\s]?\d{3}[-\s]?\d{3}|0[2-8]\d[-\s]?\d{3,4}[-\s]?\d{4}/g, '【電話遮蔽】');
-    if(r1 !== result){ result = r1; didMask = true; }
-    const r2 = result.replace(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g, '【信箱遮蔽】');
-    if(r2 !== result){ result = r2; didMask = true; }
-  }
+  // 2. Pattern engine (phone, email, ID, address, amount, etc.)
+  const patResult = applyPatterns(result);
+  if(patResult.masked){ result = patResult.out; didMask = true; }
 
-  if(S.masked.price || S.masked.cost){
-    const replaced = result.replace(AMOUNT_RE(), m => { didMask = true; return '【金額遮蔽】'; });
-    if(replaced !== result){ result = replaced; didMask = true; }
-  }
-
-  if(!didMask && (S.masked.price || S.masked.cost)){
-    if(typeof val === 'number' && val > 0)
-      return {out:'【金額遮蔽】', masked:true, type:'price'};
-  }
-
+  // 3. Keyword-in-content fallback
   if(!didMask){
     const lo = s.toLowerCase();
     for(const [type, kws] of Object.entries(MASK_KW)){
@@ -1255,7 +1720,7 @@ async function renderPDFPreview(){
 
   try {
     const pdf = await pdfjsLib.getDocument({data: S.pdfBuffer.slice(0)}).promise;
-    const previewPages = Math.min(pdf.numPages, 6);
+    const previewPages = pdf.numPages;
     body.innerHTML = '';
     const area = document.createElement('div'); area.className = 'pdf-preview-area'; body.appendChild(area);
 
@@ -1286,7 +1751,7 @@ async function renderPDFPreview(){
       S.pdfCanvases.push(pageEntry);
       setupManualDrawing(canvas, ctx, pageEntry);
 
-      // OCR (if enabled)
+      // OCR (if enabled) — multi-language + confidence threshold
       if(S.useOCR){
         const prog = document.getElementById('ocr-progress');
         const bar  = document.getElementById('ocr-bar');
@@ -1296,31 +1761,54 @@ async function renderPDFPreview(){
         bar.style.width  = Math.round((i/previewPages)*100)+'%';
 
         try {
-          const result = await Tesseract.recognize(canvas, 'eng+chi_tra', {
+          const ocrLangs = getOCRLangs();
+          const confThreshold = getOCRConfidence();
+          const result = await Tesseract.recognize(canvas, ocrLangs, {
             logger: m => { if(m.status==='recognizing text') bar.style.width = Math.round(m.progress*100)+'%'; }
           });
           ctx.fillStyle = 'black';
-          result.data.words.forEach(word => {
+
+          // Word-level: filter by confidence threshold, ML double-check for borderline
+          for(const word of result.data.words){
             const text = word.text.trim();
-            if(!text) return;
-            const {masked} = contentMask(text);
-            if(masked){
+            if(!text) continue;
+            // Skip very low confidence entirely
+            if(word.confidence < confThreshold * 0.5) continue;
+
+            let shouldMask = false;
+            if(word.confidence >= confThreshold){
+              // High confidence: use rule-based mask
+              const {masked} = contentMask(text);
+              shouldMask = masked;
+            } else {
+              // Borderline confidence: use ML to verify
+              shouldMask = await mlCheckOCRWord(text, word.confidence);
+            }
+
+            if(shouldMask){
               const b = word.bbox;
               ctx.fillRect(b.x0-2, b.y0-2, (b.x1-b.x0)+4, (b.y1-b.y0)+4);
               totalRedacted++;
             }
+          }
+
+          // Block-level: check full line text for multi-word entities
+          result.data.lines.forEach(line => {
+            const text = line.text.trim();
+            if(!text || line.confidence < confThreshold) return;
+            // NER on OCR text
+            if(S.useNER){
+              const entities = nerScan(text);
+              entities.forEach(e => {
+                if(!S.kwList.includes(e)){ S.kwList.push(e); renderKwTags(); }
+              });
+            }
           });
+
         } catch(ocrErr){ console.warn('OCR error on page', i, ocrErr); }
 
         if(i === previewPages) prog.classList.remove('show');
       }
-    }
-
-    if(pdf.numPages > previewPages){
-      const more = document.createElement('div');
-      more.style.cssText = 'text-align:center;padding:12px;font-size:12px;color:var(--muted);';
-      more.textContent = T('pdf-more', pdf.numPages-previewPages, previewPages);
-      body.appendChild(more);
     }
 
     document.getElementById('stats-bar').innerHTML =
