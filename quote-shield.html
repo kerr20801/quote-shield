@@ -1679,7 +1679,15 @@ function setupManualDrawing(canvas, ctx, pageEntry){
     pageEntry.savedStates.push(savedImageData);
     if(pageEntry.savedStates.length > 20) pageEntry.savedStates.shift(); // cap history
     ctx.fillStyle = 'black';
-    ctx.fillRect(startX, startY, endX - startX, endY - startY);
+    const rx = Math.min(startX, endX), ry = Math.min(startY, endY);
+    const rw = Math.abs(endX - startX), rh = Math.abs(endY - startY);
+    ctx.fillRect(rx, ry, rw, rh);
+
+    // Record rect in PDF point-space (divide by previewScale) for high-res re-render
+    if(rw > 2 && rh > 2){
+      const ps = pageEntry.previewScale || 1;
+      pageEntry.manualRects.push({ x: rx/ps, y: ry/ps, w: rw/ps, h: rh/ps });
+    }
   }
 
   function onLeave(){
@@ -1746,8 +1754,8 @@ async function renderPDFPreview(){
       const textContent = await page.getTextContent();
       totalRedacted += applyPDFRedact(ctx, textContent.items, vp);
 
-      // Track canvas for draw + undo
-      const pageEntry = { canvas, ctx, savedStates: [] };
+      // Track canvas for draw + undo — store previewScale for high-res export
+      const pageEntry = { canvas, ctx, savedStates: [], previewScale: scale, manualRects: [], pageIndex: i };
       S.pdfCanvases.push(pageEntry);
       setupManualDrawing(canvas, ctx, pageEntry);
 
@@ -1877,90 +1885,59 @@ function canvasToPngBytes(canvas){
   return out;
 }
 
-// ── Download PDF ───────────────────────────────────────────
-// Uses the live canvas pixels (includes auto redact + manual draws + OCR)
+// ── Download PDF — always re-render at high resolution ─────
+// The preview canvas is low-res (fitted to ~700px wide).
+// For output we ALWAYS re-render from the original PDF buffer at
+// OUTPUT_SCALE (3.0 ≈ 216 dpi for A4), then re-apply every
+// redaction. Manual rects are stored in PDF-point coords and
+// scaled back up, so they land in exactly the right place.
+const OUTPUT_SCALE = 3.0;
+
 async function downloadPDF(){
   const pw = getPw(); if(pw===false) return;
-
-  // If we have live canvases (from preview), use those directly
-  if(S.pdfCanvases.length > 0){
-    toast(T('toast-pdf-proc'), 20000);
-    try {
-      const { PDFDocument } = PDFLib;
-      const newDoc = await PDFDocument.create();
-
-      for(const pg of S.pdfCanvases){
-        const pngBytes = canvasToPngBytes(pg.canvas);
-        const pngImg   = await newDoc.embedPng(pngBytes);
-        // Use original PDF dimensions
-        const origW = pg.canvas.width  / (pg.canvas.width  / pg.canvas.width);
-        const origH = pg.canvas.height / (pg.canvas.height / pg.canvas.height);
-        const pdfPage = newDoc.addPage([pg.canvas.width, pg.canvas.height]);
-        pdfPage.drawImage(pngImg, {x:0, y:0, width:pg.canvas.width, height:pg.canvas.height});
-      }
-
-      // If more pages than previewed, process remaining
-      if(S.pdfBuffer){
-        const pdfjsPdf = await pdfjsLib.getDocument({data: S.pdfBuffer.slice(0)}).promise;
-        if(pdfjsPdf.numPages > S.pdfCanvases.length){
-          for(let i = S.pdfCanvases.length + 1; i <= pdfjsPdf.numPages; i++){
-            const page   = await pdfjsPdf.getPage(i);
-            const origVp = page.getViewport({scale:1.0});
-            const vp     = page.getViewport({scale:2.0});
-            const canvas = document.createElement('canvas');
-            canvas.width = vp.width; canvas.height = vp.height;
-            const ctx = canvas.getContext('2d');
-            await page.render({canvasContext:ctx, viewport:vp}).promise;
-            const textContent = await page.getTextContent();
-            applyPDFRedact(ctx, textContent.items, vp);
-            const pngBytes = canvasToPngBytes(canvas);
-            const pngImg   = await newDoc.embedPng(pngBytes);
-            const pdfPage  = newDoc.addPage([origVp.width, origVp.height]);
-            pdfPage.drawImage(pngImg, {x:0, y:0, width:origVp.width, height:origVp.height});
-          }
-        }
-      }
-
-      if(pw){
-        await newDoc.encrypt({
-          userPassword: pw, ownerPassword: pw,
-          permissions: { printing:'highResolution', copying:false, modifying:false, annotating:false }
-        });
-      }
-
-      const bytes = await newDoc.save();
-      const blob  = new Blob([bytes], {type:'application/pdf'});
-      const a = document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=getFilename('.pdf'); a.click();
-      toast(pw ? T('toast-pdf-enc') : T('toast-pdf-ok'));
-    } catch(e){
-      toast(T('toast-pdf-err')+e.message);
-      console.error(e);
-    }
-    return;
-  }
-
-  // Fallback: no preview canvases, process from buffer
   if(!S.pdfBuffer){ toast(T('toast-pdf-no')); return; }
-  toast(T('toast-pdf-proc2'), 20000);
+
+  toast(T('toast-pdf-proc'), 30000);
   try {
     const pdfJs  = await pdfjsLib.getDocument({data: S.pdfBuffer.slice(0)}).promise;
     const { PDFDocument } = PDFLib;
     const newDoc = await PDFDocument.create();
 
-    for(let i=1; i<=pdfJs.numPages; i++){
+    for(let i = 1; i <= pdfJs.numPages; i++){
       const page   = await pdfJs.getPage(i);
-      const origVp = page.getViewport({scale:1.0});
-      const vp     = page.getViewport({scale:2.0});
+      const origVp = page.getViewport({scale: 1.0});           // true PDF pt size
+      const hiVp   = page.getViewport({scale: OUTPUT_SCALE});  // high-res canvas
+
+      // ── Render page at high resolution ──────────────────
       const canvas = document.createElement('canvas');
-      canvas.width = vp.width; canvas.height = vp.height;
+      canvas.width  = Math.round(hiVp.width);
+      canvas.height = Math.round(hiVp.height);
       const ctx = canvas.getContext('2d');
-      await page.render({canvasContext:ctx, viewport:vp}).promise;
+      await page.render({canvasContext: ctx, viewport: hiVp}).promise;
+
+      // ── Re-apply text-layer keyword/pattern redaction ───
       const textContent = await page.getTextContent();
-      applyPDFRedact(ctx, textContent.items, vp);
+      applyPDFRedact(ctx, textContent.items, hiVp);
+
+      // ── Re-apply manual rects (stored in PDF pt coords) ─
+      const pg = S.pdfCanvases[i - 1];
+      if(pg && pg.manualRects && pg.manualRects.length > 0){
+        ctx.fillStyle = 'black';
+        for(const r of pg.manualRects){
+          ctx.fillRect(
+            r.x * OUTPUT_SCALE,
+            r.y * OUTPUT_SCALE,
+            r.w * OUTPUT_SCALE,
+            r.h * OUTPUT_SCALE
+          );
+        }
+      }
+
+      // ── Embed into output PDF at original pt dimensions ─
       const pngBytes = canvasToPngBytes(canvas);
       const pngImg   = await newDoc.embedPng(pngBytes);
       const pdfPage  = newDoc.addPage([origVp.width, origVp.height]);
-      pdfPage.drawImage(pngImg, {x:0, y:0, width:origVp.width, height:origVp.height});
+      pdfPage.drawImage(pngImg, {x: 0, y: 0, width: origVp.width, height: origVp.height});
     }
 
     if(pw){
@@ -1969,12 +1946,17 @@ async function downloadPDF(){
         permissions: { printing:'highResolution', copying:false, modifying:false, annotating:false }
       });
     }
+
     const bytes = await newDoc.save();
     const blob  = new Blob([bytes], {type:'application/pdf'});
-    const a = document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=getFilename('.pdf'); a.click();
-    toast(pw ? T('toast-pdf-fb-enc') : T('toast-pdf-fb-ok'));
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = getFilename('.pdf');
+    a.click();
+    toast(pw ? T('toast-pdf-enc') : T('toast-pdf-ok'));
+
   } catch(e){
-    toast('❌ PDF 處理失敗：'+e.message);
+    toast(T('toast-pdf-err') + e.message);
     console.error(e);
   }
 }
