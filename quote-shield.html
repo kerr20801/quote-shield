@@ -927,7 +927,7 @@ const S = {
   file: null, fileType: '', wb: null,
   sheets: {}, headers: {}, activeSheet: '',
   masked: { client:true, price:true, cost:true, note:true, supplier:false, contact:false },
-  kwList: [], kwSource: {}, confirmed: false,
+  kwList: [], kwSource: {}, confirmed: false, pdfDoc: null,
   profile: null, view: 'masked', naming: 'date', pwEnabled: false,
   pdfBuffer: null,
   pdfCanvases: [],
@@ -1776,9 +1776,11 @@ function setupManualDrawing(canvas, ctx, pageEntry){
     isDrawing = false;
     const [endX, endY] = getPos(e instanceof TouchEvent ? {clientX: e.changedTouches[0].clientX, clientY: e.changedTouches[0].clientY} : e);
     ctx.putImageData(savedImageData, 0, 0);
-    // Save undo history before committing
-    pageEntry.savedStates.push(savedImageData);
-    if(pageEntry.savedStates.length > 20) pageEntry.savedStates.shift(); // cap history
+    // 不再堆疊 ImageData 當作 undo 歷史：每份 700×990×4B ≈ 2.6MB，
+    // 上限 20 份 ＝ 53MB/頁，50 頁文件可達 2.6GB。
+    // 既然遮罩已是矩形清單，undo 改為「移除矩形 → 重繪該頁」即可，
+    // 儲存成本降為 0。savedImageData 仍保留，但它只是拖曳過程中的
+    // 單一暫存（同時只存在一份），不累積。
     ctx.fillStyle = 'black';
     const rx = Math.min(startX, endX), ry = Math.min(startY, endY);
     const rw = Math.abs(endX - startX), rh = Math.abs(endY - startY);
@@ -1807,24 +1809,33 @@ function setupManualDrawing(canvas, ctx, pageEntry){
 }
 
 // ── Undo last draw ─────────────────────────────────────────
-function undoLastDraw(){
+// 從 pdf.js 重新渲染該頁的乾淨底圖，再重放目前的矩形清單。
+// 不保存任何快照，記憶體成本為 0。
+async function repaintPage(pg){
+  if(!S.pdfDoc) return;
+  const page = await S.pdfDoc.getPage(pg.pageIndex);
+  const vp   = page.getViewport({scale: pg.previewScale});
+  pg.ctx.clearRect(0, 0, pg.canvas.width, pg.canvas.height);
+  await page.render({canvasContext: pg.ctx, viewport: vp}).promise;
+  paintRects(pg.ctx, pg.redactRects, pg.previewScale);
+  updatePageLabel(pg);
+}
+
+async function undoLastDraw(){
   let didUndo = false;
   for(const pg of S.pdfCanvases){
-    if(pg.savedStates.length > 0){
-      const prev = pg.savedStates.pop();
-      pg.ctx.putImageData(prev, 0, 0);
-      // 同步移除最後一個手動框：原本只還原畫面、沒有移除已記錄的矩形，
-      // 導致復原後的框在下載檔裡依然存在（預覽與下載再次分歧）。
-      for(let k = pg.redactRects.length - 1; k >= 0; k--){
-        if(pg.redactRects[k].src === 'manual'){ pg.redactRects.splice(k, 1); break; }
+    // 只移除手動框；文字層與 OCR 的遮罩不該被 undo 掉
+    for(let k = pg.redactRects.length - 1; k >= 0; k--){
+      if(pg.redactRects[k].src === 'manual'){
+        pg.redactRects.splice(k, 1);
+        await repaintPage(pg);
+        didUndo = true;
+        break;
       }
-      updatePageLabel(pg);
-      didUndo = true;
     }
   }
-  if(didUndo) invalidateConfirm();
-  if(!didUndo) toast(T('toast-undo-none'));
-  else toast(T('toast-undo-ok'));
+  if(didUndo){ invalidateConfirm(); toast(T('toast-undo-ok')); }
+  else toast(T('toast-undo-none'));
 }
 
 // ── PDF Preview (with manual draw + optional OCR) ──────────
@@ -1847,6 +1858,7 @@ async function renderPDFPreview(){
 
   try {
     const pdf = await pdfjsLib.getDocument({data: S.pdfBuffer.slice(0)}).promise;
+    S.pdfDoc = pdf;                    // undo 重繪時需要
     const previewPages = pdf.numPages;
     body.innerHTML = '';
     const area = document.createElement('div'); area.className = 'pdf-preview-area'; body.appendChild(area);
@@ -1873,7 +1885,7 @@ async function renderPDFPreview(){
       await page.render({canvasContext: ctx, viewport: vp}).promise;
 
       const pageEntry = {
-        canvas, ctx, savedStates: [], previewScale: scale, redactRects: [],
+        canvas, ctx, previewScale: scale, redactRects: [],
         pageIndex: i, origVp, lbl, totalPages: pdf.numPages,
         textItems: (await page.getTextContent()).items,
         ocrWords: null
@@ -2011,13 +2023,21 @@ function downloadXLSX(){
   toast(pw ? T('toast-xlsx-enc') : T('toast-xlsx-ok'));
 }
 
-function canvasToPngBytes(canvas){
-  const url = canvas.toDataURL('image/png');
-  const b64 = url.split(',')[1];
-  const raw = atob(b64);
-  const out = new Uint8Array(raw.length);
-  for(let i=0;i<raw.length;i++) out[i] = raw.charCodeAt(i);
-  return out;
+// 原本用 toDataURL → atob → 逐字元迴圈，同一份影像會同時存在三份
+// （base64 字串／binary 字串／Uint8Array），而且全部同步執行、阻塞主執行緒，
+// 大檔案時瀏覽器會跳「網頁沒有回應」。改用 toBlob + arrayBuffer：
+// 非同步、零額外複製。
+//
+// 格式依頁面性質選擇（差距很大，掃描件用 PNG 會大上數倍）：
+//   有文字層 → 向量文字渲染，顏色數少，PNG 壓得很好且無失真
+//   無文字層 → 掃描影像，屬連續色調，JPEG 才合理
+function canvasToImageBytes(canvas, mime, quality){
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(async blob => {
+      if(!blob) return reject(new Error('canvas.toBlob failed'));
+      resolve(new Uint8Array(await blob.arrayBuffer()));
+    }, mime, quality);
+  });
 }
 
 // ── Download PDF — always re-render at high resolution ─────
@@ -2040,16 +2060,25 @@ async function downloadPDF(){
     const { PDFDocument } = PDFLib;
     const newDoc = await PDFDocument.create();
 
-    for(let i = 1; i <= pdfJs.numPages; i++){
+    // 重用同一個 canvas：原本每頁各配一個，A4@3x 約 17MB，
+    // 迴圈結束前都不會被回收。改成重用後峰值固定為一頁的量。
+    const canvas = document.createElement('canvas');
+    const ctx    = canvas.getContext('2d');
+    const total  = pdfJs.numPages;
+
+    for(let i = 1; i <= total; i++){
+      // 讓出執行緒，讓瀏覽器有機會更新畫面 —— 否則整個迴圈同步佔住
+      // 主執行緒，大檔會被判定為「網頁沒有回應」。
+      await new Promise(r => setTimeout(r, 0));
+      toast(`${T('toast-pdf-proc')}　${i}/${total}`, 30000);
+
       const page   = await pdfJs.getPage(i);
       const origVp = page.getViewport({scale: 1.0});           // true PDF pt size
       const hiVp   = page.getViewport({scale: OUTPUT_SCALE});  // high-res canvas
 
       // ── Render page at high resolution ──────────────────
-      const canvas = document.createElement('canvas');
       canvas.width  = Math.round(hiVp.width);
-      canvas.height = Math.round(hiVp.height);
-      const ctx = canvas.getContext('2d');
+      canvas.height = Math.round(hiVp.height);   // 指派 width/height 會自動清空畫布
       await page.render({canvasContext: ctx, viewport: hiVp}).promise;
 
       // ── Replay the exact rects the preview showed ───────
@@ -2067,10 +2096,19 @@ async function downloadPDF(){
       paintRects(ctx, rects, OUTPUT_SCALE);
 
       // ── Embed into output PDF at original pt dimensions ─
-      const pngBytes = canvasToPngBytes(canvas);
-      const pngImg   = await newDoc.embedPng(pngBytes);
+      // 有文字層 ＝ 向量渲染（顏色數少）→ PNG 無失真且壓得好
+      // 無文字層 ＝ 掃描影像（連續色調）→ JPEG，檔案可小上數倍
+      const hasTextLayer = !!(pg && pg.textItems && pg.textItems.length > 0);
+      let imgBytes, img;
+      if(hasTextLayer){
+        imgBytes = await canvasToImageBytes(canvas, 'image/png');
+        img      = await newDoc.embedPng(imgBytes);
+      } else {
+        imgBytes = await canvasToImageBytes(canvas, 'image/jpeg', 0.92);
+        img      = await newDoc.embedJpg(imgBytes);
+      }
       const pdfPage  = newDoc.addPage([origVp.width, origVp.height]);
-      pdfPage.drawImage(pngImg, {x: 0, y: 0, width: origVp.width, height: origVp.height});
+      pdfPage.drawImage(img, {x: 0, y: 0, width: origVp.width, height: origVp.height});
     }
 
     if(pw){
