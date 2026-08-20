@@ -1609,30 +1609,56 @@ function buildTable(headers,rows,ct){
 function switchSheet(n){ S.activeSheet=n; refreshPreview(); }
 
 // ── PDF helpers ────────────────────────────────────────────
-function pdfToCanvas(tx, ty, vp){
-  const [a,,c,d,e,f] = vp.transform;
-  return [a*tx + c*ty + e, d*ty + f];
+// ── Redaction rect model ───────────────────────────────────
+// 所有遮罩（文字層 / OCR / 手動框）一律存成「scale=1.0 viewport 座標」
+// ＝ PDF point 空間（且已套用頁面旋轉）。預覽與下載都只是把同一份清單
+// 乘上各自的縮放倍率重放，因此不可能出現「預覽看到的」跟「下載拿到的」
+// 不一致。pdf.js 的 viewport.transform 六個分量都與 scale 成正比，
+// 所以 point_at_scale_s === s * point_at_scale_1，直接相乘即為正確值。
+
+// 完整 2D 仿射轉換。原本的實作漏掉 b 項（y = d*ty + f），
+// 在未旋轉頁面 b=0 剛好沒事，但 90°/270° 旋轉頁 b≠0 會讓 y 座標全錯。
+function ptToVp(x, y, vp){
+  const [a,b,c,d,e,f] = vp.transform;
+  return [a*x + c*y + e, b*x + d*y + f];
 }
 
-function applyPDFRedact(ctx, textItems, vp){
-  ctx.fillStyle = '#000000';
-  let count = 0;
+// 回傳文字層命中的遮罩矩形（scale=1.0 座標），不直接繪製。
+function computeTextLayerRects(textItems, vp1){
+  const rects = [];
   for(const item of textItems){
     if(!item.str || item.str.trim() === '') continue;
     const {masked} = contentMask(item.str);
     if(!masked) continue;
-    count++;
     const tx = item.transform[4], ty = item.transform[5];
-    const [cx, cy] = pdfToCanvas(tx, ty, vp);
-    const pdfH = item.height || Math.abs(item.transform[3]) || 12;
-    const pdfW = item.width  || item.str.length * pdfH * 0.6;
-    const [va] = vp.transform;
-    const s = Math.abs(va);
-    const h = pdfH * s;
-    const w = pdfW * s;
-    ctx.fillRect(cx - 1, cy - h - 1, w + 2, h + 2);
+    const h  = item.height || Math.abs(item.transform[3]) || 12;
+    const w  = item.width  || item.str.length * h * 0.6;
+    const desc = h * 0.25;   // 基線以下的下伸部（g/y/p），原本沒蓋到
+    // 在未旋轉的 PDF 空間取四角，再逐點轉換後取軸對齊外接矩形，
+    // 這樣旋轉頁面也能得到正確涵蓋範圍（原本直接用 transform[0] 當縮放，
+    // 旋轉 90°/270° 時該值為 0，會算出零面積矩形＝等於沒遮）。
+    const corners = [
+      ptToVp(tx,     ty - desc, vp1),
+      ptToVp(tx + w, ty - desc, vp1),
+      ptToVp(tx + w, ty + h,    vp1),
+      ptToVp(tx,     ty + h,    vp1),
+    ];
+    const xs = corners.map(p => p[0]), ys = corners.map(p => p[1]);
+    const x0 = Math.min(...xs) - 1, x1 = Math.max(...xs) + 1;
+    const y0 = Math.min(...ys) - 1, y1 = Math.max(...ys) + 1;
+    rects.push({ x: x0, y: y0, w: x1 - x0, h: y1 - y0, src: 'text' });
   }
-  return count;
+  return rects;
+}
+
+// 唯一的繪製進入點：把 scale=1.0 座標的矩形清單重放到指定縮放的 canvas。
+function paintRects(ctx, rects, scale){
+  if(!rects || !rects.length) return 0;
+  ctx.fillStyle = '#000000';
+  for(const r of rects){
+    ctx.fillRect(r.x * scale, r.y * scale, r.w * scale, r.h * scale);
+  }
+  return rects.length;
 }
 
 // ── Manual Draw Setup ──────────────────────────────────────
@@ -1686,7 +1712,7 @@ function setupManualDrawing(canvas, ctx, pageEntry){
     // Record rect in PDF point-space (divide by previewScale) for high-res re-render
     if(rw > 2 && rh > 2){
       const ps = pageEntry.previewScale || 1;
-      pageEntry.manualRects.push({ x: rx/ps, y: ry/ps, w: rw/ps, h: rh/ps });
+      pageEntry.redactRects.push({ x: rx/ps, y: ry/ps, w: rw/ps, h: rh/ps, src: 'manual' });
     }
   }
 
@@ -1710,6 +1736,11 @@ function undoLastDraw(){
     if(pg.savedStates.length > 0){
       const prev = pg.savedStates.pop();
       pg.ctx.putImageData(prev, 0, 0);
+      // 同步移除最後一個手動框：原本只還原畫面、沒有移除已記錄的矩形，
+      // 導致復原後的框在下載檔裡依然存在（預覽與下載再次分歧）。
+      for(let k = pg.redactRects.length - 1; k >= 0; k--){
+        if(pg.redactRects[k].src === 'manual'){ pg.redactRects.splice(k, 1); break; }
+      }
       didUndo = true;
     }
   }
@@ -1750,14 +1781,17 @@ async function renderPDFPreview(){
 
       await page.render({canvasContext: ctx, viewport: vp}).promise;
 
-      // Text-layer auto redaction
-      const textContent = await page.getTextContent();
-      totalRedacted += applyPDFRedact(ctx, textContent.items, vp);
-
-      // Track canvas for draw + undo — store previewScale for high-res export
-      const pageEntry = { canvas, ctx, savedStates: [], previewScale: scale, manualRects: [], pageIndex: i };
+      // Track canvas for draw + undo — redactRects 是這一頁的唯一遮罩來源
+      const pageEntry = { canvas, ctx, savedStates: [], previewScale: scale, redactRects: [], pageIndex: i };
       S.pdfCanvases.push(pageEntry);
       setupManualDrawing(canvas, ctx, pageEntry);
+
+      // Text-layer auto redaction — 算出矩形存起來，再重放到預覽 canvas
+      const textContent = await page.getTextContent();
+      const textRects = computeTextLayerRects(textContent.items, origVp);
+      pageEntry.redactRects.push(...textRects);
+      paintRects(ctx, textRects, scale);
+      totalRedacted += textRects.length;
 
       // OCR (if enabled) — multi-language + confidence threshold
       if(S.useOCR){
@@ -1795,6 +1829,18 @@ async function renderPDFPreview(){
 
             if(shouldMask){
               const b = word.bbox;
+              // Tesseract 的 bbox 是「預覽 canvas 像素」，除以 previewScale
+              // 換算回 PDF point 後存起來，下載時才能一併重放。
+              // 這是原本最嚴重的缺口：OCR 遮罩只畫在預覽畫面上、從未寫進
+              // 下載流程，導致掃描件/圖片內的機敏資料在輸出檔中完全裸露。
+              const ps = pageEntry.previewScale || 1;
+              pageEntry.redactRects.push({
+                x: (b.x0 - 2) / ps,
+                y: (b.y0 - 2) / ps,
+                w: ((b.x1 - b.x0) + 4) / ps,
+                h: ((b.y1 - b.y0) + 4) / ps,
+                src: 'ocr'
+              });
               ctx.fillRect(b.x0-2, b.y0-2, (b.x1-b.x0)+4, (b.y1-b.y0)+4);
               totalRedacted++;
             }
@@ -1915,23 +1961,19 @@ async function downloadPDF(){
       const ctx = canvas.getContext('2d');
       await page.render({canvasContext: ctx, viewport: hiVp}).promise;
 
-      // ── Re-apply text-layer keyword/pattern redaction ───
-      const textContent = await page.getTextContent();
-      applyPDFRedact(ctx, textContent.items, hiVp);
-
-      // ── Re-apply manual rects (stored in PDF pt coords) ─
+      // ── Replay the exact rects the preview showed ───────
+      // 不再於此處重算。重算會漏掉 OCR（只存在於預覽畫面），
+      // 而且 OCR/ML 判斷本身不保證兩次結果相同。
       const pg = S.pdfCanvases[i - 1];
-      if(pg && pg.manualRects && pg.manualRects.length > 0){
-        ctx.fillStyle = 'black';
-        for(const r of pg.manualRects){
-          ctx.fillRect(
-            r.x * OUTPUT_SCALE,
-            r.y * OUTPUT_SCALE,
-            r.w * OUTPUT_SCALE,
-            r.h * OUTPUT_SCALE
-          );
-        }
+      let rects = (pg && pg.redactRects) ? pg.redactRects : null;
+      if(!rects){
+        // 保險：沒有預覽資料時（理論上不會發生，下載鈕在預覽後才啟用）
+        // 至少補回文字層遮罩，不要輸出完全沒遮的檔案。
+        const textContent = await page.getTextContent();
+        rects = computeTextLayerRects(textContent.items, origVp);
+        console.warn('[quote-shield] page', i, 'has no preview rects; text-layer only fallback');
       }
+      paintRects(ctx, rects, OUTPUT_SCALE);
 
       // ── Embed into output PDF at original pt dimensions ─
       const pngBytes = canvasToPngBytes(canvas);
