@@ -221,6 +221,25 @@ input[type=file] { display: none; }
   font-size: 11px; font-family: var(--mono);
 }
 .kwtag .x { cursor: pointer; font-size: 13px; color: var(--accent); margin-left: 2px; }
+/* AI 自動加入的關鍵字：標示來源，讓誤遮看得見、可個別移除 */
+.kwtag.ai { border-color: var(--amber); background: var(--amber-lt); }
+.kwtag .aib {
+  font-size: 9px; font-weight: 700; letter-spacing: .5px;
+  background: var(--amber); color: #fff; border-radius: 3px;
+  padding: 1px 4px; margin-right: 5px;
+}
+/* 下載前的確認關卡 */
+.confirm-gate {
+  display: flex; align-items: flex-start; gap: 10px; cursor: pointer;
+  padding: 11px 14px; margin: 0 0 10px;
+  background: var(--amber-lt); border: 1px solid #E0C070; border-radius: var(--r);
+}
+.confirm-gate.hidden { display: none; }
+.confirm-gate input[type=checkbox] {
+  width: 17px; height: 17px; accent-color: var(--accent); cursor: pointer; flex-shrink: 0; margin-top: 1px;
+}
+.confirm-gate b  { font-size: 13px; display: block; }
+.confirm-gate em { font-size: 11px; color: var(--muted); font-style: normal; display: block; margin-top: 2px; }
 
 /* ── File Naming ───────────────────────────────────────────── */
 .naming-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; margin-bottom: 14px; }
@@ -764,6 +783,11 @@ table.ptable tr:hover td { background: var(--bg); }
     </div>
   </div>
 
+  <label class="confirm-gate hidden" id="confirm-gate">
+    <input type="checkbox" id="confirm-chk" onchange="onConfirmToggle()">
+    <span><b>我已逐頁確認遮罩正確</b><em>下載檔會與上方預覽完全一致；修改任何設定或手繪後需重新確認</em></span>
+  </label>
+
   <div class="action-bar" id="action-bar">
     <button class="btn primary" id="btn-dl-main" onclick="downloadMain()" disabled data-i18n="btn-dl-xlsx">⬇ 下載 XLSX</button>
     <button class="btn second"  id="btn-dl-csv"  onclick="downloadCSV()"  disabled data-i18n="btn-dl-csv-label">⬇ 下載 CSV</button>
@@ -903,7 +927,8 @@ const S = {
   file: null, fileType: '', wb: null,
   sheets: {}, headers: {}, activeSheet: '',
   masked: { client:true, price:true, cost:true, note:true, supplier:false, contact:false },
-  kwList: [], profile: null, view: 'masked', naming: 'date', pwEnabled: false,
+  kwList: [], kwSource: {}, confirmed: false,
+  profile: null, view: 'masked', naming: 'date', pwEnabled: false,
   pdfBuffer: null,
   pdfCanvases: [],
   useOCR: false,
@@ -1026,6 +1051,7 @@ function toggleOCR(){
   S.useOCR = chk.checked;
   document.getElementById('ocr-toggle-row').classList.toggle('on', S.useOCR);
   document.getElementById('ocr-lang-row').classList.toggle('hidden', !S.useOCR);
+  invalidateConfirm();
   if(S.fileType==='pdf') renderPDFPreview();
 }
 
@@ -1075,17 +1101,37 @@ function toggleMask(key, val){
 }
 
 // ── Keywords ───────────────────────────────────────────────
+// kwSource 記錄每個關鍵字的來源（'manual' / 'ai'）。AI 自動偵測的會在
+// 畫面上標示出來且可個別移除——不必在「全自動」與「全關」之間二選一。
+// HR 這類資料的風險是不對稱的：漏遮＝洩漏（會被發現），
+// 誤遮＝資料毀損（黑框看起來就是有遮到，通常沒人會回頭確認），
+// 所以自動加進來的東西必須看得見。
+function addKeyword(kw, source){
+  if(!kw || S.kwList.includes(kw)) return false;
+  S.kwList.push(kw);
+  S.kwSource[kw] = source || 'manual';
+  invalidateConfirm();
+  return true;
+}
 function addKw(){
   const inp=document.getElementById('kw-in'), v=inp.value.trim();
   if(!v||S.kwList.includes(v)){inp.value='';return;}
-  S.kwList.push(v); inp.value='';
+  addKeyword(v, 'manual'); inp.value='';
   renderKwTags(); refreshPreview();
 }
-function removeKw(i){ S.kwList.splice(i,1); renderKwTags(); refreshPreview(); }
+function removeKw(i){
+  const k = S.kwList[i];
+  S.kwList.splice(i,1); delete S.kwSource[k];
+  invalidateConfirm();
+  renderKwTags(); refreshPreview();
+}
 function renderKwTags(){
-  document.getElementById('kw-tags').innerHTML=S.kwList.map((k,i)=>
-    `<span class="kwtag">${k}<span class="x" onclick="removeKw(${i})">×</span></span>`
-  ).join('');
+  document.getElementById('kw-tags').innerHTML=S.kwList.map((k,i)=>{
+    const ai = S.kwSource[k] === 'ai';
+    return `<span class="kwtag${ai?' ai':''}" title="${ai?'AI 自動偵測，確認不需要可直接移除':'手動加入'}">`
+         + (ai ? '<b class="aib">AI</b>' : '')
+         + `${k}<span class="x" onclick="removeKw(${i})">×</span></span>`;
+  }).join('');
 }
 
 // ── Naming ─────────────────────────────────────────────────
@@ -1415,7 +1461,7 @@ async function runMLScan(){
 }
 
 function addKwFromAI(kw){
-  if(!S.kwList.includes(kw)){ S.kwList.push(kw); renderKwTags(); refreshPreview(); }
+  if(addKeyword(kw, 'ai')){ renderKwTags(); refreshPreview(); }
   toast(`✅ 已加入：${kw}`);
 }
 
@@ -1437,6 +1483,7 @@ function toggleNER(){
   chk.checked = !chk.checked;
   S.useNER = chk.checked;
   document.getElementById('ner-toggle-row').classList.toggle('on', S.useNER);
+  invalidateConfirm();
   if(S.useNER){
     // Run NER on current content and collect entities
     let allText = '';
@@ -1445,7 +1492,7 @@ function toggleNER(){
     });
     S.nerEntities = nerScan(allText);
     if(S.nerEntities.length){
-      S.nerEntities.forEach(e => { if(!S.kwList.includes(e)) S.kwList.push(e); });
+      S.nerEntities.forEach(e => addKeyword(e, 'ai'));
       renderKwTags();
       refreshPreview();
       toast(`🧠 NER 發現 ${S.nerEntities.length} 個實體，已加入遮蔽清單`);
@@ -1609,6 +1656,34 @@ function buildTable(headers,rows,ct){
 function switchSheet(n){ S.activeSheet=n; refreshPreview(); }
 
 // ── PDF helpers ────────────────────────────────────────────
+// ── 下載前確認關卡 ─────────────────────────────────────────
+// 「預覽即事實」：下載重放的就是預覽當下算出的矩形清單。既然如此，
+// 使用者必須有機會在送出前檢視並確認；而任何會改變遮罩結果的動作
+// （手繪、復原、增刪關鍵字、切換 OCR/NER）都要讓確認失效，
+// 否則使用者確認的是舊畫面、下載的是新結果。
+function showConfirmGate(show){
+  const gate = document.getElementById('confirm-gate');
+  if(!gate) return;
+  gate.classList.toggle('hidden', !show);
+  if(show) invalidateConfirm();
+}
+function invalidateConfirm(){
+  S.confirmed = false;
+  const chk = document.getElementById('confirm-chk');
+  const gate = document.getElementById('confirm-gate');
+  if(chk) chk.checked = false;
+  // 只在 PDF 流程擋下載；Excel 預覽是表格，驗證方式不同，維持原行為
+  if(gate && !gate.classList.contains('hidden')){
+    const btn = document.getElementById('btn-dl-main');
+    if(btn) btn.disabled = true;
+  }
+}
+function onConfirmToggle(){
+  S.confirmed = document.getElementById('confirm-chk').checked;
+  const btn = document.getElementById('btn-dl-main');
+  if(btn) btn.disabled = !S.confirmed;
+}
+
 // ── Redaction rect model ───────────────────────────────────
 // 所有遮罩（文字層 / OCR / 手動框）一律存成「scale=1.0 viewport 座標」
 // ＝ PDF point 空間（且已套用頁面旋轉）。預覽與下載都只是把同一份清單
@@ -1713,6 +1788,8 @@ function setupManualDrawing(canvas, ctx, pageEntry){
     if(rw > 2 && rh > 2){
       const ps = pageEntry.previewScale || 1;
       pageEntry.redactRects.push({ x: rx/ps, y: ry/ps, w: rw/ps, h: rh/ps, src: 'manual' });
+      updatePageLabel(pageEntry);
+      invalidateConfirm();
     }
   }
 
@@ -1741,19 +1818,30 @@ function undoLastDraw(){
       for(let k = pg.redactRects.length - 1; k >= 0; k--){
         if(pg.redactRects[k].src === 'manual'){ pg.redactRects.splice(k, 1); break; }
       }
+      updatePageLabel(pg);
       didUndo = true;
     }
   }
+  if(didUndo) invalidateConfirm();
   if(!didUndo) toast(T('toast-undo-none'));
   else toast(T('toast-undo-ok'));
 }
 
 // ── PDF Preview (with manual draw + optional OCR) ──────────
+// ── PDF Preview（兩階段：先讓規則定案，再統一套用）────────────
+// 原本是「邊掃邊遮」：NER 在逐頁迴圈裡把偵測到的實體 push 進 S.kwList，
+// 而 contentMask() 讀的就是 S.kwList —— 等於第 1 頁用的規則比最後一頁少，
+// 同一份文件不同頁套用不同標準，且結果隨 NER 命中順序改變（時好時壞）。
+// 改成兩階段後，Pass 2 開始前 kwList 已固定，全部頁面必然一致，
+// 同一份檔案重跑結果相同。
+// 附帶修正：OCR 現在跑在「還沒畫黑框」的乾淨畫面上（原本在文字層遮罩
+// 畫上去之後才辨識，Tesseract 會讀到被黑框蓋住的區域）。
 async function renderPDFPreview(){
   const body = document.getElementById('preview-body');
   body.innerHTML = `<div class="preview-empty"><span class="eico">⏳</span><p>${T('pdf-loading')}</p></div>`;
   document.getElementById('stats-bar').innerHTML = `<span class="sbadge total">PDF 格式</span>`;
   S.pdfCanvases = [];
+  invalidateConfirm();
 
   if(!S.pdfBuffer){ body.innerHTML=`<div class="preview-empty"><span class="eico">📄</span><p>${T('pdf-no-buf')}</p></div>`; return; }
 
@@ -1763,8 +1851,11 @@ async function renderPDFPreview(){
     body.innerHTML = '';
     const area = document.createElement('div'); area.className = 'pdf-preview-area'; body.appendChild(area);
 
-    let totalRedacted = 0;
+    const prog = document.getElementById('ocr-progress');
+    const bar  = document.getElementById('ocr-bar');
+    const stat = document.getElementById('ocr-status');
 
+    // ═══ Pass 1：渲染 + 掃描。只收集資料與關鍵字，不畫任何遮罩 ═══
     for(let i = 1; i <= previewPages; i++){
       const page    = await pdf.getPage(i);
       const origVp  = page.getViewport({scale:1.0});
@@ -1781,88 +1872,76 @@ async function renderPDFPreview(){
 
       await page.render({canvasContext: ctx, viewport: vp}).promise;
 
-      // Track canvas for draw + undo — redactRects 是這一頁的唯一遮罩來源
-      const pageEntry = { canvas, ctx, savedStates: [], previewScale: scale, redactRects: [], pageIndex: i };
+      const pageEntry = {
+        canvas, ctx, savedStates: [], previewScale: scale, redactRects: [],
+        pageIndex: i, origVp, lbl, totalPages: pdf.numPages,
+        textItems: (await page.getTextContent()).items,
+        ocrWords: null
+      };
       S.pdfCanvases.push(pageEntry);
       setupManualDrawing(canvas, ctx, pageEntry);
 
-      // Text-layer auto redaction — 算出矩形存起來，再重放到預覽 canvas
-      const textContent = await page.getTextContent();
-      const textRects = computeTextLayerRects(textContent.items, origVp);
-      pageEntry.redactRects.push(...textRects);
-      paintRects(ctx, textRects, scale);
-      totalRedacted += textRects.length;
-
-      // OCR (if enabled) — multi-language + confidence threshold
       if(S.useOCR){
-        const prog = document.getElementById('ocr-progress');
-        const bar  = document.getElementById('ocr-bar');
-        const stat = document.getElementById('ocr-status');
         prog.classList.add('show');
         stat.textContent = T('ocr-status', i, previewPages);
         bar.style.width  = Math.round((i/previewPages)*100)+'%';
-
         try {
-          const ocrLangs = getOCRLangs();
-          const confThreshold = getOCRConfidence();
-          const result = await Tesseract.recognize(canvas, ocrLangs, {
+          const result = await Tesseract.recognize(canvas, getOCRLangs(), {
             logger: m => { if(m.status==='recognizing text') bar.style.width = Math.round(m.progress*100)+'%'; }
           });
-          ctx.fillStyle = 'black';
-
-          // Word-level: filter by confidence threshold, ML double-check for borderline
-          for(const word of result.data.words){
-            const text = word.text.trim();
-            if(!text) continue;
-            // Skip very low confidence entirely
-            if(word.confidence < confThreshold * 0.5) continue;
-
-            let shouldMask = false;
-            if(word.confidence >= confThreshold){
-              // High confidence: use rule-based mask
-              const {masked} = contentMask(text);
-              shouldMask = masked;
-            } else {
-              // Borderline confidence: use ML to verify
-              shouldMask = await mlCheckOCRWord(text, word.confidence);
-            }
-
-            if(shouldMask){
-              const b = word.bbox;
-              // Tesseract 的 bbox 是「預覽 canvas 像素」，除以 previewScale
-              // 換算回 PDF point 後存起來，下載時才能一併重放。
-              // 這是原本最嚴重的缺口：OCR 遮罩只畫在預覽畫面上、從未寫進
-              // 下載流程，導致掃描件/圖片內的機敏資料在輸出檔中完全裸露。
-              const ps = pageEntry.previewScale || 1;
-              pageEntry.redactRects.push({
-                x: (b.x0 - 2) / ps,
-                y: (b.y0 - 2) / ps,
-                w: ((b.x1 - b.x0) + 4) / ps,
-                h: ((b.y1 - b.y0) + 4) / ps,
-                src: 'ocr'
-              });
-              ctx.fillRect(b.x0-2, b.y0-2, (b.x1-b.x0)+4, (b.y1-b.y0)+4);
-              totalRedacted++;
-            }
+          // 只留判斷需要的欄位，不保留整個 Tesseract 結果（省記憶體）
+          pageEntry.ocrWords = result.data.words.map(w => ({
+            text: (w.text||'').trim(), confidence: w.confidence, bbox: w.bbox
+          }));
+          // NER：這裡「只收集關鍵字」，遮罩留到 Pass 2 才算
+          if(S.useNER){
+            const conf = getOCRConfidence();
+            result.data.lines.forEach(line => {
+              const text = (line.text||'').trim();
+              if(!text || line.confidence < conf) return;
+              nerScan(text).forEach(e => addKeyword(e, 'ai'));
+            });
           }
-
-          // Block-level: check full line text for multi-word entities
-          result.data.lines.forEach(line => {
-            const text = line.text.trim();
-            if(!text || line.confidence < confThreshold) return;
-            // NER on OCR text
-            if(S.useNER){
-              const entities = nerScan(text);
-              entities.forEach(e => {
-                if(!S.kwList.includes(e)){ S.kwList.push(e); renderKwTags(); }
-              });
-            }
-          });
-
         } catch(ocrErr){ console.warn('OCR error on page', i, ocrErr); }
-
         if(i === previewPages) prog.classList.remove('show');
       }
+    }
+
+    // ═══ 規則到此定案，之後不再變動 ═══
+    renderKwTags();
+
+    // ═══ Pass 2：用同一套規則統一計算並繪製 ═══
+    let totalRedacted = 0;
+    for(const pe of S.pdfCanvases){
+      const rects = computeTextLayerRects(pe.textItems, pe.origVp);
+
+      if(pe.ocrWords){
+        const confThreshold = getOCRConfidence();
+        const ps = pe.previewScale || 1;
+        for(const word of pe.ocrWords){
+          if(!word.text) continue;
+          if(word.confidence < confThreshold * 0.5) continue;
+          let shouldMask;
+          if(word.confidence >= confThreshold){
+            shouldMask = contentMask(word.text).masked;
+          } else {
+            shouldMask = await mlCheckOCRWord(word.text, word.confidence);
+          }
+          if(shouldMask){
+            const b = word.bbox;
+            rects.push({
+              x: (b.x0 - 2) / ps, y: (b.y0 - 2) / ps,
+              w: ((b.x1 - b.x0) + 4) / ps, h: ((b.y1 - b.y0) + 4) / ps,
+              src: 'ocr'
+            });
+          }
+        }
+      }
+
+      pe.redactRects.push(...rects);
+      paintRects(pe.ctx, pe.redactRects, pe.previewScale);
+      totalRedacted += pe.redactRects.length;
+      updatePageLabel(pe);
     }
 
     document.getElementById('stats-bar').innerHTML =
@@ -1870,14 +1949,24 @@ async function renderPDFPreview(){
       `<span class="sbadge masked">${T('sbadge-auto', totalRedacted)}</span>` +
       (S.useOCR ? `<span class="sbadge sheet">${T('sbadge-ocr')}</span>` : '');
 
-    document.getElementById('btn-dl-main').disabled = false;
+    showConfirmGate(true);
     stepActivate(4); updateFilenamePreview();
 
   } catch(e){
     body.innerHTML = `<div class="preview-empty"><span class="eico">📄</span><p>${T('pdf-no-preview')}</p></div>`;
-    document.getElementById('btn-dl-main').disabled = false;
+    showConfirmGate(false);
     console.error(e);
   }
+}
+
+// 每頁標題列顯示這一頁的遮罩數量，讓「確認」有東西可以核對
+function updatePageLabel(pe){
+  if(!pe.lbl) return;
+  const n = pe.redactRects.length;
+  pe.lbl.innerHTML =
+    `<span>${T('pdf-page-label', pe.pageIndex, pe.totalPages)}`
+    + ` <b style="color:var(--accent);font-family:var(--mono);">遮罩 ${n}</b></span>`
+    + `<span class="draw-hint">${T('draw-hint')}</span>`;
 }
 
 // ── Get filename ───────────────────────────────────────────
@@ -1942,6 +2031,8 @@ const OUTPUT_SCALE = 3.0;
 async function downloadPDF(){
   const pw = getPw(); if(pw===false) return;
   if(!S.pdfBuffer){ toast(T('toast-pdf-no')); return; }
+  // 保險：即使有人繞過按鈕的 disabled 狀態，未確認一律不產出
+  if(!S.confirmed){ toast('請先勾選「我已逐頁確認遮罩正確」'); return; }
 
   toast(T('toast-pdf-proc'), 30000);
   try {
